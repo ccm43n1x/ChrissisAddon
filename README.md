@@ -4,9 +4,30 @@ Gearing-Checkliste und Währungs-Übersicht für World of Warcraft, Midnight Sea
 
 Zeigt in einem Fenster:
 
-- **Angepinnte Währungen** ganz oben: Mistcrests, Sparks, Coffer Keys, Voidcores, Field Accolades, jeweils mit Wochen-Cap
-- **Checkliste** nach Wochen, sortiert in vier Blöcke: Jetzt tun, Danach, Nur wenn Zeit, Nicht tun
+- **Angepinnte Währungen** ganz oben: Mistcrests, Sparks, Coffer Keys, Voidcores, Field Accolades, jeweils mit Fortschrittsbalken
+- **Checkliste** als Karussell: eine Woche pro Seite, mit `<` und `>` durchschalten. Innerhalb der Woche sortiert nach vier Blöcken: Jetzt tun, Danach, Nur wenn Zeit, Nicht tun
 - **Alle Währungen** im zweiten Reiter
+
+## Bedienung
+
+| Aktion | Wie |
+|---|---|
+| Woche wechseln | `<` und `>` in der Kopfzeile |
+| Fenster verschieben | linke Maustaste ziehen |
+| Größe ändern | `-` und `+` unten rechts, **Strg + Mausrad**, oder `/chrissi scale 120` |
+| Scrollen | Mausrad |
+
+Größe ist von 50 bis 150 Prozent einstellbar. Position, Größe, Reiter und die zuletzt gezeigte Woche überleben den Logout.
+
+## Optik
+
+Bewusst ohne Zierrahmen gebaut, passend zu minimalistischen UI-Setups wie EllesmereUI:
+
+- Flache, dunkle, halbtransparente Fläche statt Blizzard-Rahmen
+- Trennung über Haarlinien, nicht über Kästen
+- Überschrift links, dünne Linie füllt den Rest der Zeile
+- Werte rechtsbündig, Beschriftung links
+- Farbe nur dort, wo sie Bedeutung trägt
 
 ## Installation
 
@@ -21,10 +42,11 @@ Wichtig: Der Ordner muss exakt `ChrissisAddon` heißen, sonst lädt WoW ihn nich
 | Befehl | Wirkung |
 |---|---|
 | `/chrissi` | Fenster auf/zu |
+| `/chrissi scale 120` | Größe setzen, 50 bis 150 Prozent |
 | `/chrissi quellen` | Guide-Stand und Quellenliste |
 | `/chrissi clear` | Alle Haken dieses Charakters löschen |
 | `/chrissi zero` | Nullbestände ein-/ausblenden |
-| `/chrissi reset` | Fensterposition zurücksetzen |
+| `/chrissi reset` | Position und Größe zurücksetzen |
 | `/chrissi help` | Befehlsübersicht |
 
 Werkzeuge zum Ermitteln fehlender IDs:
