@@ -103,6 +103,23 @@ Der Guide-Stand steht im Fenster unter dem Titel und ist über `/chrissi quellen
 - Das Add-on liest nur aus und rechnet. Es trifft keine Entscheidungen für dich und kann nichts automatisch ausführen. Das lässt die WoW-API nicht zu.
 - Die Checkliste ist **nicht** an deinen Spielstand gekoppelt. Sie zeigt die Regeln, wendet sie aber noch nicht automatisch auf dein Itemlevel an. Das ist für eine spätere Version geplant.
 
+## Farben und Lesbarkeit
+
+Die vier Blockfarben sind nicht nach Geschmack gewählt, sondern gegen Farbsehschwäche geprüft (OKLab-Abstand, Deuteranopie / Protanopie / Tritanopie):
+
+| Block | Farbe | |
+|---|---|---|
+| Jetzt tun | `#0ca30c` | grün |
+| Danach | `#fab219` | gelb |
+| Nur wenn Zeit | `#898781` | grau, bewusst zurückgenommen |
+| Nicht tun | `#d03b3b` | rot |
+
+Der schlechteste Nachbarabstand liegt bei ΔE 9,1 für Deuteranopie (Zielwert ≥ 8). Die erste Fassung lag bei 3,0, dort waren Grün und Gelb für Rot-Grün-Blinde praktisch identisch.
+
+Zwei bewusste Abweichungen: Das Grau ist absichtlich neutral, weil „Nur wenn Zeit" leise sein soll. Das Gelb ist absichtlich hell, weil bei Farbsehschwäche genau der Helligkeitsunterschied es von Grün trennt.
+
+**Farbe ist nie die einzige Information.** Jeder Block trägt seine Bezeichnung als Text, und die Farbe steckt in einem Streifen neben dem Text statt in der Schrift selbst. Wer die Farben gar nicht unterscheiden kann, verliert nichts.
+
 ## Lizenz
 
 MIT, siehe `LICENSE`.

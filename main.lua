@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.2.0 - Logik
+    Chrissi's Addon v0.4.0 - Logik
     ------------------------------
     Diese Datei enthaelt KEINEN Guide-Inhalt. Der steht in data.lua.
     Wer den Guide aktualisiert, fasst nur data.lua an.
@@ -25,10 +25,10 @@ local WINDOW_WIDTH  = 430
 local WINDOW_HEIGHT = 560
 local PAD           = 16
 
--- Welche Waehrungen oben festgepinnt werden.
+-- Welche Währungen oben festgepinnt werden.
 --
 -- IDs sind sprachunabhaengig und funktionieren auch, wenn die Kategorie im
--- Blizzard-Waehrungsfenster eingeklappt ist. Deshalb sind sie der Hauptweg.
+-- Blizzard-Währungsfenster eingeklappt ist. Deshalb sind sie der Hauptweg.
 -- Ermittelt ueber /chrissi scan am 13.08.2026.
 local PINNED_IDS = {
     3442,  -- Adventurer Mistcrest
@@ -40,7 +40,7 @@ local PINNED_IDS = {
     3405,  -- Field Accolade
 }
 
--- Fallback fuer Waehrungen, deren ID noch nicht bekannt ist. Greift nur auf
+-- Fallback fuer Währungen, deren ID noch nicht bekannt ist. Greift nur auf
 -- englischem Client. Sobald die ID bekannt ist, gehoert sie nach oben.
 local PINNED_PATTERNS = {
     "Coffer Key",
@@ -48,6 +48,26 @@ local PINNED_PATTERNS = {
 }
 
 local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
+
+-- Design-Tokens ---------------------------------------------------------------
+-- Grundregel aus dem Farbsystem: Text traegt Textfarben, niemals die
+-- Kategoriefarbe. Die Zugehoerigkeit uebernimmt ein farbiger Streifen NEBEN
+-- dem Text. Das haelt lange Absaetze lesbar und macht die Farbe optional.
+local INK_DONE  = "ff6f6a62"   -- erledigt, bewusst zurueckgenommen
+local INK_DIM   = "ff9d968a"   -- Nebeninfos, Caps, Marker
+local GOLD      = "ffffd100"   -- Ueberschriften, WoW-Konvention
+local GREEN     = "ff0ca30c"   -- automatisch erkannt
+
+local ROW_GAP     = 5    -- Luft zwischen Eintraegen
+local BLOCK_GAP   = 10   -- Luft vor einer Blockueberschrift
+local SECTION_GAP = 14   -- Luft zwischen Abschnitten
+
+local function HexToRGB(hex)
+    if #hex == 8 then hex = hex:sub(3) end   -- fuehrendes "ff" abschneiden
+    return tonumber(hex:sub(1, 2), 16) / 255,
+           tonumber(hex:sub(3, 4), 16) / 255,
+           tonumber(hex:sub(5, 6), 16) / 255
+end
 
 -- ============================================================================
 -- B) SavedVariables
@@ -122,7 +142,7 @@ local function GetItemLevels()
     return tonumber(overall) or 0, tonumber(equipped) or 0
 end
 
--- Laeuft Blizzards Waehrungsliste ab. Wir verdrahten keine IDs hart, weil
+-- Laeuft Blizzards Währungsliste ab. Wir verdrahten keine IDs hart, weil
 -- die sich mit jeder Season aendern. Ein Scan bleibt gueltig.
 local function GetCurrencies()
     local list, collapsedHeaders = {}, 0
@@ -170,7 +190,7 @@ local function GetCurrencies()
     return list, collapsedHeaders
 end
 
--- Eine einzelne Waehrung direkt per ID abfragen.
+-- Eine einzelne Währung direkt per ID abfragen.
 -- Vorteil gegenueber der Listen-Methode: funktioniert auch bei eingeklappter
 -- Kategorie und ist sprachunabhaengig.
 local function GetCurrencyByID(id)
@@ -190,7 +210,7 @@ local function GetCurrencyByID(id)
     }
 end
 
--- Die angepinnten Waehrungen: erst die bekannten IDs, danach der Namens-Fallback
+-- Die angepinnten Währungen: erst die bekannten IDs, danach der Namens-Fallback
 local function GetPinnedCurrencies()
     local out, seen = {}, {}
 
@@ -218,15 +238,23 @@ local function GetPinnedCurrencies()
     return out
 end
 
-local function FormatCurrencyValue(entry)
-    local text = FormatNumber(entry.quantity)
-    if entry.canEarnPerWeek and entry.maxWeekly > 0 then
-        text = text .. string.format("  |cff808080(Woche %s/%s)|r",
-            FormatNumber(entry.earnedThisWeek), FormatNumber(entry.maxWeekly))
-    elseif entry.maxQuantity > 0 then
-        text = text .. string.format("  |cff808080(max %s)|r", FormatNumber(entry.maxQuantity))
+-- Liefert den Anzeigetext und, falls es einen Deckel gibt, den Fortschritt
+-- als Bruch fuer den Balken. Zwei Zahlen im Kopf teilen muss niemand.
+local function CurrencyDisplay(entry)
+    local main = FormatNumber(entry.quantity)
+
+    if entry.maxQuantity and entry.maxQuantity > 0 then
+        return main .. "  |c" .. INK_DIM .. "/ " .. FormatNumber(entry.maxQuantity) .. "|r",
+               entry.quantity / entry.maxQuantity
     end
-    return text
+
+    if entry.canEarnPerWeek and entry.maxWeekly > 0 then
+        return main .. "  |c" .. INK_DIM .. "Woche " .. FormatNumber(entry.earnedThisWeek)
+               .. "/" .. FormatNumber(entry.maxWeekly) .. "|r",
+               entry.earnedThisWeek / entry.maxWeekly
+    end
+
+    return main, nil
 end
 
 -- ============================================================================
@@ -369,11 +397,18 @@ ilvlText:SetJustifyH("LEFT")
 local closeBtn = CreateFrame("Button", nil, frame, "UIPanelCloseButton")
 closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -8)
 
--- Container fuer die angepinnten Waehrungen
+-- Container fuer die angepinnten Währungen
 local pinned = CreateFrame("Frame", nil, frame)
 pinned:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 2, -76)
 pinned:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD + 2), -76)
 pinned:SetHeight(1)
+
+-- Haarlinie unter dem Währungsblock. Trennt die Kennzahlen vom Inhalt,
+-- ohne einen Rahmen zu ziehen. Recessive Chrome: sichtbar, aber leise.
+local pinnedRule = frame:CreateTexture(nil, "ARTWORK")
+pinnedRule:SetHeight(1)
+pinnedRule:SetColorTexture(1, 1, 1, 0.09)
+pinnedRule:Hide()
 
 -- Reiter
 local function CreateTab(key, label)
@@ -389,7 +424,7 @@ local function CreateTab(key, label)
 end
 
 local tabGuide    = CreateTab("guide",    "Checkliste")
-local tabCurrency = CreateTab("currency", "Waehrungen")
+local tabCurrency = CreateTab("currency", "Währungen")
 
 local scrollFrame = CreateFrame("ScrollFrame", nil, frame, "ScrollFrameTemplate")
 scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -(PAD + 18), PAD + 2)
@@ -418,38 +453,83 @@ local active = {}
 
 local function NewLine(parent)
     local f = CreateFrame("Frame", nil, parent)
+
     f.icon = f:CreateTexture(nil, "ARTWORK")
     f.icon:SetSize(16, 16)
     f.icon:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -2)
+
     f.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.name:SetJustifyH("LEFT")
+
     f.value = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     f.value:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -2)
     f.value:SetJustifyH("RIGHT")
+
+    -- Duenner Fortschrittsbalken fuer Währungen mit Cap. Zeigt den Stand
+    -- auf einen Blick, ohne dass man zwei Zahlen im Kopf teilen muss.
+    f.meterBg = f:CreateTexture(nil, "ARTWORK")
+    f.meterBg:SetHeight(2)
+    f.meterBg:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 22, 2)
+    f.meterBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 2)
+    f.meterBg:SetColorTexture(1, 1, 1, 0.08)
+
+    f.meterFill = f:CreateTexture(nil, "OVERLAY")
+    f.meterFill:SetHeight(2)
+    f.meterFill:SetPoint("BOTTOMLEFT", f.meterBg, "BOTTOMLEFT", 0, 0)
+
     return f
 end
 
 local function NewCheck(parent)
     local f = CreateFrame("Frame", nil, parent)
+
+    -- Farbiger Streifen links. Er traegt die Blockzugehoerigkeit, damit der
+    -- TEXT in normaler Schriftfarbe bleiben kann. Farbe als Marke neben dem
+    -- Text statt im Text: haelt lange Absaetze lesbar.
+    f.bar = f:CreateTexture(nil, "ARTWORK")
+    f.bar:SetWidth(2)
+    f.bar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -1)
+    f.bar:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 1)
+
     f.box = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
     f.box:SetSize(20, 20)
-    f.box:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
+    f.box:SetPoint("TOPLEFT", f, "TOPLEFT", 8, 1)
+
     f.text = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.text:SetJustifyH("LEFT")
     f.text:SetWordWrap(true)
+
     return f
 end
 
 local function NewHeader(parent)
     local f = CreateFrame("Button", nil, parent)
+
     f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    f.text:SetPoint("LEFT", f, "LEFT", 0, 0)
+    f.text:SetPoint("TOPLEFT", f, "TOPLEFT", 0, -1)
     f.text:SetJustifyH("LEFT")
+
+    f.sub = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.sub:SetPoint("TOPLEFT", f.text, "BOTTOMLEFT", 0, -1)
+    f.sub:SetJustifyH("LEFT")
+
+    -- Fortschrittsbalken des Abschnitts, sitzt auf der Grundlinie
+    f.meterBg = f:CreateTexture(nil, "ARTWORK")
+    f.meterBg:SetHeight(2)
+    f.meterBg:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
+    f.meterBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
+    f.meterBg:SetColorTexture(1, 1, 1, 0.08)
+
+    f.meterFill = f:CreateTexture(nil, "OVERLAY")
+    f.meterFill:SetHeight(2)
+    f.meterFill:SetPoint("BOTTOMLEFT", f.meterBg, "BOTTOMLEFT", 0, 0)
+
     -- Dezente Hervorhebung. Die Listbox-Textur mit Blendmodus ADD war ein
     -- greller goldener Balken ueber die volle Breite.
     f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
     local hl = f:GetHighlightTexture()
     if hl then hl:SetVertexColor(1, 1, 1, 0.07) end
+
     return f
 end
 
@@ -512,9 +592,11 @@ local function RenderPinned()
         return 0
     end
 
+    local rowW = WINDOW_WIDTH - 2 * (PAD + 2)
+
     for _, entry in ipairs(entries) do
         local row = AcquirePinned("line")
-        row:SetHeight(18)
+        row:SetHeight(21)
         row:ClearAllPoints()
         row:SetPoint("TOPLEFT", pinned, "TOPLEFT", 0, -y)
         row:SetPoint("TOPRIGHT", pinned, "TOPRIGHT", 0, -y)
@@ -531,9 +613,27 @@ local function RenderPinned()
         row.name:SetPoint("RIGHT", row.value, "LEFT", -8, 0)
         row.name:SetWordWrap(false)
         row.name:SetText(entry.name)
-        row.value:SetText(FormatCurrencyValue(entry))
 
-        y = y + 18
+        local valueText, frac = CurrencyDisplay(entry)
+        row.value:SetText(valueText)
+
+        if frac then
+            frac = math.max(0, math.min(1, frac))
+            row.meterBg:Show()
+            row.meterFill:Show()
+            -- Voll heisst hier "Cap erreicht", also bewusst warnend gelb.
+            if frac >= 1 then
+                row.meterFill:SetColorTexture(HexToRGB("fab219"))
+            else
+                row.meterFill:SetColorTexture(1, 1, 1, 0.42)
+            end
+            row.meterFill:SetWidth(math.max(1, (rowW - 22) * frac))
+        else
+            row.meterBg:Hide()
+            row.meterFill:Hide()
+        end
+
+        y = y + 21
     end
 
     pinned:SetHeight(y)
@@ -547,12 +647,13 @@ local function RenderCurrencyTab(width)
     if collapsedHeaders > 0 then
         local row = Acquire("check")
         row.box:Hide()
+        row.bar:SetColorTexture(0, 0, 0, 0)   -- kein Blockstreifen an dieser Zeile
         row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
         row.text:ClearAllPoints()
         row.text:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
         row.text:SetWidth(width - 4)
         row.text:SetText("|cffff8080" .. collapsedHeaders ..
-            " Kategorie(n) im Waehrungsfenster eingeklappt, deren Eintraege fehlen hier.|r")
+            " Kategorie(n) im Währungsfenster eingeklappt, deren Eintraege fehlen hier.|r")
         local h = math.max(18, row.text:GetStringHeight() + 6)
         row:SetHeight(h)
         row:SetWidth(width)
@@ -565,10 +666,13 @@ local function RenderCurrencyTab(width)
             row:SetHeight(22)
             row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
             row:SetWidth(width)
-            row.text:SetText("|cffffd100" .. entry.name .. "|r")
+            row.text:SetText("|c" .. GOLD .. entry.name .. "|r")
+            row.sub:SetText("")
+            row.meterBg:Hide()
+            row.meterFill:Hide()
             row:SetScript("OnClick", nil)
             row:EnableMouse(false)   -- nicht anklickbar, also auch nicht hervorheben
-            y = y + 22
+            y = y + 24
         elseif entry.quantity > 0 or ChrissisAddonDB.showZero then
             local row = Acquire("line")
             row:SetHeight(18)
@@ -585,8 +689,10 @@ local function RenderCurrencyTab(width)
             row.name:SetPoint("RIGHT", row.value, "LEFT", -8, 0)
             row.name:SetWordWrap(false)
             row.name:SetText(entry.name)
-            row.value:SetText(FormatCurrencyValue(entry))
-            y = y + 18
+            row.value:SetText((CurrencyDisplay(entry)))
+            row.meterBg:Hide()
+            row.meterFill:Hide()
+            y = y + 19
         end
     end
 
@@ -608,46 +714,77 @@ local function RenderGuideTab(width)
 
         local collapsed = IsCollapsed(section.id)
         local arrow = collapsed and "+" or "-"
-        local counter = (total > 0) and string.format("  |cff808080(%d/%d)|r", done, total) or ""
+        local counter = (total > 0)
+            and string.format("   |c%s%d/%d|r", INK_DIM, done, total) or ""
 
         local head = Acquire("header")
-        head:SetHeight(24)
+        local headH = section.subtitle and 34 or 24
+        head:SetHeight(headH)
         head:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
         head:SetWidth(width)
-        head.text:SetText(string.format("|cffffd100%s %s|r%s", arrow, section.title, counter))
+        head.text:SetText(string.format("|c%s%s %s|r%s", GOLD, arrow, section.title, counter))
+        head.sub:SetText(section.subtitle
+            and ("|c" .. INK_DIM .. section.subtitle .. "|r") or "")
+
+        -- Fortschrittsbalken statt nur einer Zahl. Duenn und auf der
+        -- Grundlinie, damit er informiert ohne zu dominieren.
+        if total > 0 then
+            local frac = math.max(0, math.min(1, done / total))
+            head.meterBg:Show()
+            head.meterFill:Show()
+            if frac >= 1 then
+                head.meterFill:SetColorTexture(HexToRGB(ns.BLOCKS.P1.color))
+            else
+                head.meterFill:SetColorTexture(1, 1, 1, 0.32)
+            end
+            head.meterFill:SetWidth(math.max(1, width * frac))
+        else
+            head.meterBg:Hide()
+            head.meterFill:Hide()
+        end
+
         head:EnableMouse(true)   -- anklickbar zum Auf- und Zuklappen
         head:SetScript("OnClick", function()
             ChrissisAddonDB.collapsed[section.id] = not collapsed or nil
             ns.Render()
         end)
-        y = y + 26
+        y = y + headH + 6
 
         if not collapsed then
             -- Nach den vier Bloecken gruppieren: das ist die eigene Struktur,
             -- die Larias' Guide nicht hat.
             for _, blockKey in ipairs(BLOCK_ORDER) do
                 local block = ns.BLOCKS[blockKey]
+                local br, bg, bb = HexToRGB(block.color)
                 local any = false
 
                 for _, item in ipairs(section.items) do
                     if item.block == blockKey then
                         if not any then
                             any = true
+                            y = y + BLOCK_GAP
                             local sub = Acquire("header")
-                            sub:SetHeight(20)
-                            sub:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -y)
-                            sub:SetWidth(width - 10)
+                            sub:SetHeight(18)
+                            sub:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 8, -y)
+                            sub:SetWidth(width - 8)
                             sub.text:SetText("|c" .. block.color .. block.label .. "|r")
+                            sub.sub:SetText("")
+                            sub.meterBg:Hide()
+                            sub.meterFill:Hide()
                             sub:SetScript("OnClick", nil)
                             sub:EnableMouse(false)   -- reine Ueberschrift
                             y = y + 20
                         end
 
                         local row = Acquire("check")
-                        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, -y)
-                        row:SetWidth(width - 14)
+                        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -y)
+                        row:SetWidth(width - 10)
 
                         local checked, isAuto = GetItemState(item)
+
+                        -- Der Streifen traegt die Blockfarbe. Erledigtes
+                        -- verblasst, statt zu verschwinden.
+                        row.bar:SetColorTexture(br, bg, bb, checked and 0.28 or 0.85)
 
                         local textLeft, textWidth
                         if item.kind == "task" then
@@ -665,40 +802,45 @@ local function RenderGuideTab(width)
                                     ns.Render()
                                 end)
                             end
-                            textLeft, textWidth = 24, width - 42
+                            textLeft, textWidth = 32, width - 52
                         else
                             row.box:Hide()
-                            textLeft, textWidth = 4, width - 22
+                            textLeft, textWidth = 12, width - 32
                         end
 
+                        -- Text bleibt Textfarbe. Die Blockfarbe steckt im
+                        -- Streifen links, nicht in der Schrift. Nur Erledigtes
+                        -- wird zurueckgenommen.
                         local body = item.text
-                        if item.proof == "single" then
-                            body = body .. "  |cff808080[1 Quelle]|r"
-                        end
                         if item.kind == "task" and checked then
-                            body = "|cff808080" .. body .. "|r"
-                        elseif item.kind == "rule" then
-                            body = "|c" .. block.color .. body .. "|r"
+                            body = "|c" .. INK_DONE .. body .. "|r"
                         end
+
                         -- Marker ausserhalb der Einfaerbung, sonst frisst der
                         -- Reset-Code |r die Graufaerbung dahinter auf.
+                        local suffix = ""
                         if isAuto then
-                            body = body .. "  |cff40ff40[auto]|r"
+                            suffix = suffix .. "  |c" .. GREEN .. "[auto]|r"
+                        end
+                        if item.proof == "single" then
+                            suffix = suffix .. "  |c" .. INK_DIM .. "[1 Quelle]|r"
                         end
 
                         row.text:ClearAllPoints()
-                        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -3)
+                        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -2)
                         row.text:SetWidth(textWidth)
                         row.text:SetWordWrap(true)
-                        row.text:SetText(body)
+                        row.text:SetText(body .. suffix)
 
                         local h = math.max(20, row.text:GetStringHeight() + 8)
                         row:SetHeight(h)
-                        y = y + h + 2
+                        y = y + h + ROW_GAP
                     end
                 end
             end
-            y = y + 6
+            y = y + SECTION_GAP
+        else
+            y = y + 4
         end
     end
 
@@ -710,21 +852,34 @@ function ns.Render()
     wipe(renderCache)   -- teure Abfragen einmal pro Durchlauf, nicht pro Zeile
 
     -- Untertitel mit Guide-Stand. Billiges, wirksames Vertrauenssignal.
-    subTitle:SetText(string.format("Guide %s, Stand %s  |  %s",
-        ns.META.guideVersion, ns.META.updated, ns.META.season))
+    -- Mittelpunkt statt senkrechtem Strich, weil "|" in WoW ein Steuerzeichen
+    -- einleitet und in Texten besser gar nicht erst auftaucht.
+    subTitle:SetText(string.format("|c%sGuide %s · Stand %s · %s|r",
+        INK_DIM, ns.META.guideVersion, ns.META.updated, ns.META.season))
 
     local overall, equipped = GetItemLevels()
     if math.abs(overall - equipped) < 0.05 then
-        ilvlText:SetText(string.format("Itemlevel: |cffffd100%.1f|r", equipped))
+        ilvlText:SetText(string.format("Itemlevel  |c%s%.1f|r", GOLD, equipped))
     else
         ilvlText:SetText(string.format(
-            "Itemlevel: |cffffd100%.1f|r angelegt, %.1f gesamt", equipped, overall))
+            "Itemlevel  |c%s%.1f|r  |c%sangelegt · %.1f gesamt|r",
+            GOLD, equipped, INK_DIM, overall))
     end
 
     local pinnedHeight = RenderPinned()
 
-    -- Reiter unter den angepinnten Waehrungen platzieren
-    local tabsY = -(76 + pinnedHeight + 8)
+    -- Haarlinie zwischen Kennzahlen und Inhalt
+    pinnedRule:ClearAllPoints()
+    if pinnedHeight > 0 then
+        pinnedRule:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 2, -(78 + pinnedHeight))
+        pinnedRule:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -(PAD + 2), -(78 + pinnedHeight))
+        pinnedRule:Show()
+    else
+        pinnedRule:Hide()
+    end
+
+    -- Reiter unter den angepinnten Währungen platzieren
+    local tabsY = -(76 + pinnedHeight + 14)
     tabGuide:ClearAllPoints()
     tabGuide:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 2, tabsY)
     tabCurrency:ClearAllPoints()
@@ -733,8 +888,8 @@ function ns.Render()
     -- Aktiven Reiter markieren statt den inaktiven auszugrauen. Mit SetEnabled
     -- sah der AKTIVE Reiter grau und der inaktive aktiv aus, also genau falsch.
     local isGuide = (ChrissisAddonDB.tab ~= "currency")
-    tabGuide:SetText(isGuide and "|cffffd100> Checkliste|r" or "Checkliste")
-    tabCurrency:SetText(isGuide and "Waehrungen" or "|cffffd100> Waehrungen|r")
+    tabGuide:SetText(isGuide and ("|c" .. GOLD .. "Checkliste|r") or "Checkliste")
+    tabCurrency:SetText(isGuide and "Währungen" or ("|c" .. GOLD .. "Währungen|r"))
 
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 2, tabsY - 28)
@@ -820,10 +975,10 @@ end)
 
 local function PrintCurrencyScan()
     local list, collapsedHeaders = GetCurrencies()
-    print("|cff33ff99Chrissi's Addon|r Waehrungs-Scan:")
+    print("|cff33ff99Chrissi's Addon|r Währungs-Scan:")
     local count = 0
     for _, e in ipairs(list) do
-        -- Der Scan zeigt IMMER alles, auch Nullbestaende. Zweck ist das
+        -- Der Scan zeigt IMMER alles, auch Nullbestände. Zweck ist das
         -- Ermitteln von IDs, und dabei sind gerade die noch leeren wichtig.
         if not e.isHeader then
             count = count + 1
@@ -832,7 +987,7 @@ local function PrintCurrencyScan()
         end
     end
     if count == 0 then
-        print("  Nichts gefunden. Waehrungsfenster oeffnen und Kategorien aufklappen.")
+        print("  Nichts gefunden. Währungsfenster öffnen und Kategorien aufklappen.")
     end
     if collapsedHeaders > 0 then
         print(string.format("  |cffff8080Hinweis:|r %d Kategorie(n) eingeklappt.", collapsedHeaders))
@@ -862,7 +1017,7 @@ local function PrintQuestDiff()
     local now, count = TakeQuestSnapshot()
 
     if count == 0 then
-        print("|cff33ff99Chrissi's Addon|r Quest-Liste nicht verfuegbar.")
+        print("|cff33ff99Chrissi's Addon|r Quest-Liste nicht verfügbar.")
         return
     end
 
@@ -899,7 +1054,7 @@ end
 
 local function PrintFactions()
     if not (C_MajorFactions and C_MajorFactions.GetMajorFactionIDs) then
-        print("|cff33ff99Chrissi's Addon|r Fraktions-API nicht verfuegbar.")
+        print("|cff33ff99Chrissi's Addon|r Fraktions-API nicht verfügbar.")
         return
     end
     local ok, ids = pcall(C_MajorFactions.GetMajorFactionIDs)
@@ -922,7 +1077,7 @@ local function PrintVault()
     local acts = GetVaultActivities()
     print("|cff33ff99Chrissi's Addon|r Great Vault, Rohdaten:")
     if #acts == 0 then
-        print("  Keine Aktivitaeten. Vault oeffnet sich erst mit der Season.")
+        print("  Keine Aktivitäten. Vault öffnet sich erst mit der Season.")
         return
     end
     for i, a in ipairs(acts) do
@@ -956,7 +1111,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
 
     elseif msg == "zero" then
         ChrissisAddonDB.showZero = not ChrissisAddonDB.showZero
-        print("|cff33ff99Chrissi's Addon|r Nullbestaende: "
+        print("|cff33ff99Chrissi's Addon|r Nullbestände: "
             .. (ChrissisAddonDB.showZero and "an" or "aus"))
         if frame:IsShown() then ns.Render() end
 
@@ -965,11 +1120,11 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         ChrissisAddonDB.x, ChrissisAddonDB.y = 0, 0
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-        print("|cff33ff99Chrissi's Addon|r Fensterposition zurueckgesetzt.")
+        print("|cff33ff99Chrissi's Addon|r Fensterposition zurückgesetzt.")
 
     elseif msg == "clear" then
         wipe(ChrissisAddonCharDB.checks)
-        print("|cff33ff99Chrissi's Addon|r Alle Haken dieses Charakters geloescht.")
+        print("|cff33ff99Chrissi's Addon|r Alle Haken dieses Charakters gelöscht.")
         if frame:IsShown() then ns.Render() end
 
     elseif msg == "quellen" or msg == "sources" then
@@ -981,11 +1136,11 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("|cff33ff99Chrissi's Addon|r Befehle:")
         print("  |cffffd100/chrissi|r           Fenster auf/zu")
         print("  |cffffd100/chrissi quellen|r   Guide-Stand und Quellen")
-        print("  |cffffd100/chrissi clear|r     Alle Haken dieses Charakters loeschen")
-        print("  |cffffd100/chrissi zero|r      Nullbestaende ein-/ausblenden")
-        print("  |cffffd100/chrissi reset|r     Fensterposition zuruecksetzen")
+        print("  |cffffd100/chrissi clear|r     Alle Haken dieses Charakters löschen")
+        print("  |cffffd100/chrissi zero|r      Nullbestände ein-/ausblenden")
+        print("  |cffffd100/chrissi reset|r     Fensterposition zurücksetzen")
         print("|cff808080  Werkzeuge zum Ermitteln fehlender IDs:|r")
-        print("  |cffffd100/chrissi scan|r      Alle Waehrungs-IDs")
+        print("  |cffffd100/chrissi scan|r      Alle Währungs-IDs")
         print("  |cffffd100/chrissi questdiff|r Neue Quest-IDs (vorher und nachher aufrufen)")
         print("  |cffffd100/chrissi factions|r  Fraktions-IDs und Renown-Stand")
         print("  |cffffd100/chrissi vault|r     Great-Vault-Rohdaten")
