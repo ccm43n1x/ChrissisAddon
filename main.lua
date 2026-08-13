@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.9.0 - Logik
+    Chrissi's Addon v1.0.0 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -154,6 +154,44 @@ local function GetItemLevels()
     if not GetAverageItemLevel then return 0, 0 end
     local overall, equipped = GetAverageItemLevel()
     return tonumber(overall) or 0, tonumber(equipped) or 0
+end
+
+-- Der Durchschnitt verdeckt Einzelslots: ein schwaches Teil zieht ihn nur um
+-- rund ein Sechzehntel nach unten und faellt deshalb nicht auf. Fuer die
+-- Gruppensuche zaehlt aber der schwaechste Slot mit. Also beides messen.
+local GEAR_SLOTS = {
+    [1] = "Kopf", [2] = "Hals", [3] = "Schultern", [5] = "Brust", [6] = "Gürtel",
+    [7] = "Beine", [8] = "Füße", [9] = "Handgelenke", [10] = "Hände",
+    [11] = "Ring 1", [12] = "Ring 2", [13] = "Schmuck 1", [14] = "Schmuck 2",
+    [15] = "Umhang", [16] = "Waffenhand", [17] = "Zweithand",
+}
+
+local function GetGearAudit(target)
+    if not (GetInventoryItemLink and C_Item and C_Item.GetDetailedItemLevelInfo) then
+        return nil
+    end
+    local worst, worstName, below, counted
+    below, counted = 0, 0
+    for slot, name in pairs(GEAR_SLOTS) do
+        local link = GetInventoryItemLink("player", slot)
+        if link then
+            local ok, ilvl = pcall(C_Item.GetDetailedItemLevelInfo, link)
+            ilvl = ok and tonumber(ilvl) or nil
+            if ilvl and ilvl > 0 then
+                counted = counted + 1
+                if not worst or ilvl < worst then worst, worstName = ilvl, name end
+                if ilvl < target then below = below + 1 end
+            end
+        end
+    end
+    if counted == 0 then return nil end
+    return { worst = worst, worstName = worstName, below = below, counted = counted }
+end
+
+local function GetIlvlTier(ilvl)
+    for _, t in ipairs(ns.ILVL_TIERS or {}) do
+        if ilvl >= t.min then return t end
+    end
 end
 
 local function GetCurrencies()
@@ -484,7 +522,7 @@ closeBtn:SetScript("OnClick", function() frame:Hide() end)
 
 -- Kennzahlen
 local ilvlLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-ilvlLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -52)
+ilvlLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -56)
 ilvlLabel:SetText("|c" .. INK_DIM .. "Itemlevel|r")
 
 -- Die eine Zahl, auf die alles einzahlt. Bekommt entsprechend Groesse.
@@ -492,9 +530,47 @@ local ilvlValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 ilvlValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -50)
 ilvlValue:SetJustifyH("RIGHT")
 
+-- Unsichtbare Flaeche ueber der Itemlevel-Zeile, damit sie einen Tooltip
+-- tragen kann. Dort steht die Einordnung und der schwaechste Slot.
+local ilvlHover = CreateFrame("Frame", nil, frame)
+ilvlHover:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -50)
+ilvlHover:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -50)
+ilvlHover:SetHeight(24)
+ilvlHover:EnableMouse(true)
+ilvlHover:SetScript("OnEnter", function(self)
+    AnchorTooltip(self)
+    local _, equipped = GetItemLevels()
+    local target = ns.ILVL_TARGET or 292
+    local tier = GetIlvlTier(equipped)
+
+    GameTooltip:AddLine(string.format("Itemlevel %.1f   %s", equipped,
+        tier and tier.face or ""), 1, 1, 1)
+    if tier then
+        GameTooltip:AddLine(tier.label, HexToRGB(tier.color))
+        GameTooltip:AddLine(tier.hint, 0.65, 0.63, 0.58, true)
+    end
+
+    GameTooltip:AddLine(" ")
+    local a = GetGearAudit(target)
+    if a then
+        GameTooltip:AddLine("Der Durchschnitt verdeckt Einzelslots:", 0.85, 0.82, 0.76, true)
+        GameTooltip:AddLine(string.format("Schwächster Slot: %d  (%s)", a.worst, a.worstName),
+            0.65, 0.63, 0.58)
+        if a.below > 0 then
+            GameTooltip:AddLine(string.format("%d von %d Slots unter %d", a.below, a.counted, target),
+                0.98, 0.70, 0.10)
+        else
+            GameTooltip:AddLine(string.format("Alle %d Slots auf %d oder höher", a.counted, target),
+                0.05, 0.64, 0.05)
+        end
+    end
+    GameTooltip:Show()
+end)
+ilvlHover:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 local pinned = CreateFrame("Frame", nil, frame)
-pinned:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -70)
-pinned:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -70)
+pinned:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -78)
+pinned:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -78)
 pinned:SetHeight(1)
 
 local pinnedRule = frame:CreateTexture(nil, "ARTWORK")
@@ -610,7 +686,7 @@ end)
 
 -- Wochen-Karussell -----------------------------------------------------------
 local nav = CreateFrame("Frame", nil, frame)
-nav:SetHeight(38)
+nav:SetHeight(46)
 
 local function CreateArrow(text)
     local b = CreateFrame("Button", nil, nav)
@@ -682,8 +758,8 @@ scrollFrame:SetScrollChild(scrollChild)
 local footRule = frame:CreateTexture(nil, "ARTWORK")
 footRule:SetHeight(1)
 footRule:SetColorTexture(1, 1, 1, RULE_ALPHA)
-footRule:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 28)
-footRule:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 28)
+footRule:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 34)
+footRule:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 34)
 
 local function ApplyScale(v)
     v = math.max(SCALE_MIN, math.min(SCALE_MAX, v))
@@ -695,7 +771,7 @@ end
 ns.ApplyScale = ApplyScale
 
 local scaleText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-scaleText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 9)
+scaleText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 12)
 
 -- Vorwärtsdeklaration. Ohne sie greifen die Klick-Handler weiter unten auf
 -- eine GLOBALE Variable zu, die es nicht gibt, weil die echten Funktionen
@@ -797,13 +873,13 @@ end
 local alphaText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 -- Links Deckkraft, rechts Größe. Zwei gleichartige Regler, spiegelbildlich
 -- angeordnet, damit man sie nicht verwechselt.
-alphaText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD + 48, 9)
+alphaText:SetPoint("LEFT", alphaPlus, "RIGHT", 10, 0)
 
 -- Fenster auf die volle Listenhöhe ziehen. Mittig auf der Fußzeile, damit es
 -- nicht mit der Skalierung rechts verwechselt wird.
 local expandBtn = CreateFrame("Button", nil, frame)
 expandBtn:SetSize(34, 20)
-expandBtn:SetPoint("BOTTOM", frame, "BOTTOM", 0, 6)
+expandBtn:SetPoint("BOTTOM", frame, "BOTTOM", 0, 8)
 expandBtn.label = expandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 expandBtn.label:SetPoint("CENTER")
 expandBtn:SetScript("OnClick", function()
@@ -1236,18 +1312,18 @@ function ns.Render()
     subTitle:SetText(string.format("|c%sGuide %s · Stand %s|r",
         INK_DIM, ns.META.guideVersion, ns.META.updated))
 
-    local overall, equipped = GetItemLevels()
-    if math.abs(overall - equipped) < 0.05 then
-        ilvlValue:SetText(string.format("|c%s%.1f|r", GOLD, equipped))
-    else
-        ilvlValue:SetText(string.format("|c%s%.1f|r  |c%s(%.1f)|r",
-            GOLD, equipped, INK_DIM, overall))
-    end
+    -- Itemlevel eingefaerbt nach Stufe, plus Gesicht als zweites Signal.
+    -- Farbe allein traegt nie eine Aussage.
+    local _, equipped = GetItemLevels()
+    local tier = GetIlvlTier(equipped)
+    local col = (tier and tier.color) or GOLD
+    ilvlValue:SetText(string.format("|c%s%.1f|r  |c%s%s|r",
+        col, equipped, col, (tier and tier.face) or ""))
 
     local pinnedHeight, shownCount, totalCount = RenderPinned()
 
     -- Schalter direkt unter den Währungen, rechtsbündig
-    local toggleY = -(70 + pinnedHeight + 2)
+    local toggleY = -(78 + pinnedHeight + 8)
     pinnedToggle:ClearAllPoints()
     pinnedToggle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, toggleY)
     ns.pinnedTotal = totalCount   -- damit OnLeave die Beschriftung rekonstruieren kann
@@ -1258,14 +1334,14 @@ function ns.Render()
     end
     pinnedToggle:SetWidth(pinnedToggle.label:GetStringWidth() + 18)
 
-    local ruleY = toggleY - 18
+    local ruleY = toggleY - 29   -- 21px Knopfhoehe plus 8 Luft
     pinnedRule:ClearAllPoints()
     pinnedRule:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, ruleY)
     pinnedRule:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, ruleY)
 
     -- Reiter
     local isGuide = (ChrissisAddonDB.tab ~= "currency")
-    local tabsY = ruleY - 10
+    local tabsY = ruleY - 14
 
     tabGuide:ClearAllPoints()
     tabGuide:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, tabsY)
@@ -1301,7 +1377,7 @@ function ns.Render()
         tabGuide.underline:Hide()
     end
 
-    local tabRuleY = tabsY - 24
+    local tabRuleY = tabsY - 30   -- Reiter sind jetzt 21px hoch
     tabRule:ClearAllPoints()
     tabRule:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, tabRuleY)
     tabRule:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, tabRuleY)
@@ -1314,8 +1390,8 @@ function ns.Render()
         local section = ns.SECTIONS[idx]
 
         nav:ClearAllPoints()
-        nav:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, tabRuleY - 8)
-        nav:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, tabRuleY - 8)
+        nav:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, tabRuleY - 12)
+        nav:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, tabRuleY - 12)
         nav:Show()
 
         navTitle:SetText("|c" .. GOLD .. (section and section.title or "?") .. "|r")
@@ -1349,15 +1425,15 @@ function ns.Render()
 
         -- Farbe der Pfeile regelt jetzt der Button-Zustand, nicht mehr hier
 
-        contentTop = tabRuleY - 8 - 38 - 8
+        contentTop = tabRuleY - 12 - 46 - 10
     else
         nav:Hide()
-        contentTop = tabRuleY - 10
+        contentTop = tabRuleY - 14
     end
 
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, contentTop)
-    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 34)
+    scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 42)
 
     local width = CONTENT_W
     scrollChild:SetWidth(width)

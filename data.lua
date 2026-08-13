@@ -46,7 +46,7 @@
 local addonName, ns = ...
 
 ns.META = {
-    guideVersion = "1.2",
+    guideVersion = "1.3",
     updated      = "2026-08-13",
     season       = "Midnight Season 2 (Patch 12.1)",
     region       = "EU",
@@ -71,6 +71,30 @@ ns.BLOCKS = {
     P2 = { label = "Danach",        color = "fffab219", order = 2 },
     P3 = { label = "Nur wenn Zeit", color = "ff898781", order = 3 },
     NO = { label = "Nicht tun",     color = "ffd03b3b", order = 4 },
+}
+
+-- Itemlevel-Einstufung ---------------------------------------------------------
+-- Schwellen aus der eigenen Master-Notiz, nicht neu erfunden:
+--   unter 279  garantierte Veteran- und Champion-Quellen zuerst
+--   279 - 285  Lückenfüller, Method warnt unter 286 vor zäher Gruppensuche
+--   ab 286     nur noch Vault und nachhaltige Upgrades
+--   ab 292     Wochenmaximum der Pre-Season (M0 gibt Champion 1/6 = 292)
+-- Absteigend sortiert, der erste Treffer gewinnt.
+ns.ILVL_TARGET = 292
+
+ns.ILVL_TIERS = {
+    { min = 292, face = ":D", color = "ff0ca30c",
+      label = "Wochenmaximum erreicht",
+      hint  = "Mehr geht in der Pre-Season nur über Vault und das eine Hero-Item aus dem Delve mit Karte." },
+    { min = 286, face = ":)", color = "ff0ca30c",
+      label = "gut aufgestellt",
+      hint  = "Über der 286er-Schwelle. Gruppensuche für Mythic+ ist damit unproblematisch." },
+    { min = 279, face = ":|", color = "fffab219",
+      label = "knapp",
+      hint  = "Unter 286 wird die Gruppensuche laut Method zäh. Schnelle Lückenfüller, dann M0 und Vault." },
+    { min = 0,   face = ":(", color = "ffd03b3b",
+      label = "zu niedrig",
+      hint  = "Garantierte Veteran- und Champion-Quellen zuerst, bevor irgendetwas anderes." },
 }
 
 ns.SECTIONS = {
