@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.5.0 - Logik
+    Chrissi's Addon v0.6.0 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -57,7 +57,8 @@ local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
 local GOLD     = "ffe8c15a"   -- Titel, wie die Questnamen im Tracker
 local INK      = "ffd6d2c8"   -- Fließtext
 local INK_DIM  = "ff8d887e"   -- Nebeninfos
-local INK_DONE = "ff5f5b54"   -- erledigt, bewusst zurückgenommen
+local INK_DONE = "ff7a746a"   -- erledigt. Heller als zunaechst gewaehlt:
+                              -- #5f5b54 lag bei 2,93:1 und war unlesbar.
 local GREEN    = "ff0ca30c"   -- automatisch erkannt
 
 -- Flächen
@@ -89,6 +90,7 @@ local DEFAULTS = {
     tab = "guide",
     section = 1,        -- welche Seite des Karussells
     showZero = false,
+    hideDone = false,   -- Erledigte ausblenden
 }
 
 local CHAR_DEFAULTS = { checks = {} }
@@ -301,6 +303,24 @@ local function GetItemState(item)
     return false, false
 end
 
+-- Klartext zu einer Erkennungsregel. Ohne das ist "[auto]" reines Rätselraten,
+-- und Rätselraten im Interface ist genau das, was man vermeiden will.
+local function CheckDescription(spec)
+    if not spec then return nil end
+    if spec.type == "quest" then
+        return "Quest " .. tostring(spec.id) .. " ist abgeschlossen"
+    elseif spec.type == "questAny" then
+        return "eine von " .. tostring(#(spec.ids or {})) .. " Quests ist abgeschlossen"
+    elseif spec.type == "currency" then
+        return "Währung " .. tostring(spec.id) .. " liegt bei mindestens " .. tostring(spec.min)
+    elseif spec.type == "renown" then
+        return "Renown " .. tostring(spec.level) .. " bei Fraktion " .. tostring(spec.faction)
+    elseif spec.type == "vault" then
+        return "Great Vault, Reihe " .. tostring(spec.row) .. ", ab " .. tostring(spec.need)
+    end
+    return spec.type
+end
+
 -- ============================================================================
 -- E) Frames
 -- ============================================================================
@@ -408,6 +428,25 @@ local tabRule = frame:CreateTexture(nil, "ARTWORK")
 tabRule:SetHeight(1)
 tabRule:SetColorTexture(1, 1, 1, RULE_ALPHA)
 
+-- Erledigte ausblenden. Bei 17 Einträgen pro Woche, von denen zehn erledigt
+-- sind, scrollt man sonst an totem Gewicht vorbei.
+local hideDoneBtn = CreateFrame("Button", nil, frame)
+hideDoneBtn:SetHeight(20)
+hideDoneBtn.label = hideDoneBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+hideDoneBtn.label:SetPoint("RIGHT")
+hideDoneBtn:SetScript("OnClick", function()
+    ChrissisAddonDB.hideDone = not ChrissisAddonDB.hideDone
+    ns.Render()
+end)
+hideDoneBtn:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    GameTooltip:AddLine("Erledigte Einträge ausblenden", 1, 1, 1)
+    GameTooltip:AddLine("Blendet nur abgehakte Aufgaben aus. Regeln bleiben stehen.",
+        0.65, 0.63, 0.58, true)
+    GameTooltip:Show()
+end)
+hideDoneBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
 -- Wochen-Karussell -----------------------------------------------------------
 local nav = CreateFrame("Frame", nil, frame)
 nav:SetHeight(38)
@@ -450,6 +489,11 @@ navMeterFill:SetPoint("BOTTOMLEFT", navMeterBg, "BOTTOMLEFT", 0, 0)
 
 local navCount = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 navCount:SetPoint("BOTTOMRIGHT", navMeterBg, "TOPRIGHT", 0, 3)
+
+-- Seitenanzeige. Ohne sie weiß man beim Durchschalten nicht, wo man steht
+-- und wie viel noch kommt.
+local navPage = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+navPage:SetPoint("BOTTOMLEFT", navMeterBg, "TOPLEFT", 0, 3)
 
 local function ClampSection(i)
     local n = #ns.SECTIONS
@@ -593,6 +637,10 @@ local function NewCheck(parent)
     f.text:SetJustifyH("LEFT")
     f.text:SetWordWrap(true)
 
+    -- Für den Tooltip. Details gehören nicht in die Liste, sondern hierhin:
+    -- die Liste bleibt kurz, die Begründung ist trotzdem erreichbar.
+    f:EnableMouse(true)
+
     return f
 end
 
@@ -631,7 +679,11 @@ local function ReleaseAll()
         rec.frame:SetParent(scrollChild)
         -- Nur lösen, was beim Rendern auch neu gesetzt wird. Header-Text und
         -- Header-Linie sind einmalig verankert und bleiben es.
-        if rec.kind == "check" and rec.frame.text then rec.frame.text:ClearAllPoints() end
+        if rec.kind == "check" and rec.frame.text then
+            rec.frame.text:ClearAllPoints()
+            rec.frame:SetScript("OnEnter", nil)
+            rec.frame:SetScript("OnLeave", nil)
+        end
         if rec.kind == "line"  and rec.frame.name then rec.frame.name:ClearAllPoints() end
         if rec.frame.box then
             rec.frame.box:SetScript("OnClick", nil)
@@ -748,23 +800,31 @@ local function RenderGuideTab(width, section)
     for _, blockKey in ipairs(BLOCK_ORDER) do
         local block = ns.BLOCKS[blockKey]
         local br, bg2, bb = HexToRGB(block.color)
-        local any = false
 
+        -- Erst filtern, dann rendern. Sonst steht eine Blocküberschrift ohne
+        -- Einträge da, wenn alles darunter ausgeblendet ist.
+        local visible = {}
         for _, item in ipairs(section.items) do
             if item.block == blockKey then
-                if not any then
-                    any = true
-                    if y > 0 then y = y + BLOCK_GAP end
-                    local head = Acquire("header")
-                    head:SetHeight(16)
-                    head:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
-                    head:SetWidth(width)
-                    head.text:SetText("|c" .. block.color .. block.label .. "|r")
-                    head:EnableMouse(false)
-                    y = y + 22
-                end
-
                 local checked, isAuto = GetItemState(item)
+                if not (ChrissisAddonDB.hideDone and checked and item.kind == "task") then
+                    visible[#visible + 1] = { item = item, checked = checked, isAuto = isAuto }
+                end
+            end
+        end
+
+        if #visible > 0 then
+            if y > 0 then y = y + BLOCK_GAP end
+            local head = Acquire("header")
+            head:SetHeight(16)
+            head:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
+            head:SetWidth(width)
+            head.text:SetText("|c" .. block.color .. block.label .. "|r")
+            head:EnableMouse(false)
+            y = y + 22
+
+            for _, v in ipairs(visible) do
+                local item, checked, isAuto = v.item, v.checked, v.isAuto
 
                 local row = Acquire("check")
                 row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
@@ -805,6 +865,35 @@ local function RenderGuideTab(width, section)
                 row.text:SetWidth(textWidth)
                 row.text:SetWordWrap(true)
                 row.text:SetText(body .. suffix)
+
+                -- Tooltip trägt alles, was die Zeile nicht tragen soll:
+                -- Begründung, Quellenlage und was "[auto]" konkret prüft.
+                row:SetScript("OnEnter", function(self)
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    GameTooltip:AddLine(item.text, 1, 1, 1, true)
+                    if item.detail then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine(item.detail, 0.65, 0.63, 0.58, true)
+                    end
+                    if isAuto or item.check or item.proof == "single" then
+                        GameTooltip:AddLine(" ")
+                    end
+                    if item.check then
+                        local desc = CheckDescription(item.check)
+                        if isAuto then
+                            GameTooltip:AddLine("Automatisch erkannt: " .. desc, 0.05, 0.64, 0.05, true)
+                        else
+                            GameTooltip:AddLine("Wird automatisch erkannt, sobald: " .. desc,
+                                0.55, 0.53, 0.49, true)
+                        end
+                    end
+                    if item.proof == "single" then
+                        GameTooltip:AddLine("Nur eine Quelle, nicht gegengeprüft.",
+                            0.85, 0.7, 0.4, true)
+                    end
+                    GameTooltip:Show()
+                end)
+                row:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
                 local h = math.max(18, row.text:GetStringHeight() + 7)
                 row:SetHeight(h)
@@ -855,6 +944,18 @@ function ns.Render()
     tabCurrency:SetWidth(tabCurrency.label:GetStringWidth() + 4)
 
     if isGuide then
+        hideDoneBtn:ClearAllPoints()
+        hideDoneBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, tabsY)
+        hideDoneBtn.label:SetText(ChrissisAddonDB.hideDone
+            and ("|c" .. GOLD .. "Erledigte ausgeblendet|r")
+            or  ("|c" .. INK_DIM .. "Erledigte ausblenden|r"))
+        hideDoneBtn:SetWidth(hideDoneBtn.label:GetStringWidth() + 4)
+        hideDoneBtn:Show()
+    else
+        hideDoneBtn:Hide()
+    end
+
+    if isGuide then
         tabGuide.underline:SetColorTexture(HexToRGB(GOLD))
         tabGuide.underline:Show()
         tabCurrency.underline:Hide()
@@ -883,6 +984,7 @@ function ns.Render()
 
         navTitle:SetText("|c" .. GOLD .. (section and section.title or "?") .. "|r")
         navSub:SetText("|c" .. INK_DIM .. ((section and section.subtitle) or "") .. "|r")
+        navPage:SetText(string.format("|c%sSeite %d von %d|r", INK_DIM, idx, #ns.SECTIONS))
 
         local done, total = 0, 0
         if section then
@@ -1096,6 +1198,24 @@ local function PrintVault()
         .. ", world=" .. tostring(VaultTypeFor("world")))
 end
 
+-- Rückfrage vor dem Löschen. Der Fortschritt eines Charakters ist nicht
+-- wiederherstellbar, also darf ein Vertipper ihn nicht kosten. Blizzards
+-- eigener Dialog, weil vertraute Muster weniger Nachdenken kosten.
+StaticPopupDialogs["CHRISSISADDON_CLEAR"] = {
+    text = "Alle Haken von %s löschen?|n|nDas lässt sich nicht rückgängig machen.",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function()
+        wipe(ChrissisAddonCharDB.checks)
+        print("|cff33ff99Chrissi's Addon|r Alle Haken dieses Charakters gelöscht.")
+        if frame:IsShown() then ns.Render() end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
 SLASH_CHRISSISADDON1 = "/chrissi"
 SLASH_CHRISSISADDON2 = "/chrissisaddon"
 
@@ -1144,9 +1264,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         if frame:IsShown() then ns.Render() end
 
     elseif cmd == "clear" then
-        wipe(ChrissisAddonCharDB.checks)
-        print("|cff33ff99Chrissi's Addon|r Alle Haken dieses Charakters gelöscht.")
-        if frame:IsShown() then ns.Render() end
+        StaticPopup_Show("CHRISSISADDON_CLEAR", UnitName("player") or "diesem Charakter")
 
     elseif cmd == "quellen" or cmd == "sources" then
         print("|cff33ff99Chrissi's Addon|r Guide " .. ns.META.guideVersion

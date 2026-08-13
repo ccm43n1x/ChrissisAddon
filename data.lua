@@ -14,7 +14,11 @@
         id   = "a1b2c3d4",   -- FESTE ID, ändert sich NIE.
                              -- Der Haken hängt an der ID, nicht an der Zeile.
                              -- Text darf umformuliert werden, Haken bleibt.
-        text = "...",
+        text = "...",        -- KURZ. Eine Zeile, was zu tun ist. Nicht mehr.
+        detail = "...",      -- OPTIONAL: Begründung, Zahlen, Fallstricke.
+                             -- Landet im Tooltip, nicht in der Liste.
+                             -- Regel: Was man zum HANDELN braucht, gehört in
+                             -- text. Was man zum VERSTEHEN braucht, in detail.
         kind = "task",       -- "task" = abhakbar, "rule" = Merksatz ohne Haken
         block = "P1",        -- P1 = jetzt tun, P2 = danach,
                              -- P3 = nur wenn Zeit, NO = nicht tun
@@ -42,7 +46,7 @@
 local addonName, ns = ...
 
 ns.META = {
-    guideVersion = "1.1",
+    guideVersion = "1.2",
     updated      = "2026-08-13",
     season       = "Midnight Season 2 (Patch 12.1)",
     region       = "EU",
@@ -85,15 +89,19 @@ ns.SECTIONS = {
               text = "Ab ca. 286: Veteran-Grind überspringen. Nur Vault und nachhaltige Upgrades." },
 
             { id = "r_renown", kind = "rule", block = "P1", proof = "ok",
-              text = "Renown-Gear: Stufe erreicht, nicht abgeholt und Slot unter 292 bedeutet sofort abholen. Fehlt die Stufe, nur nachfarmen wenn Restaufwand unter 30 Minuten und Slot unter 279." },
+              text = "Erreichtes Renown-Gear sofort abholen, wenn der Slot unter 292 liegt.",
+              detail = "Fehlt die Renown-Stufe noch, nur nachfarmen wenn der Restaufwand unter 30 Minuten liegt und der Slot unter 279. Sonst in der Pre-Season liegen lassen." },
 
             { id = "r_crest_trick", kind = "rule", block = "P2", proof = "ok",
-              text = "Crest-Tauschtrick: Ein höheres Item macht den niedrigen Track gratis bis zum gleichen Itemlevel. Einmal 20 Crests zahlen, danach ist die nächste Stufe gratis. Lohnt bei HERO und MYTH, nicht bei Champion." },
+              text = "Crest-Tauschtrick nutzen, aber nur bei Hero und Myth.",
+              detail = "Ein höheres Item macht den niedrigen Track gratis bis zum gleichen Itemlevel. Einmal 20 Crests zahlen, danach ist die nächste Stufe gratis. Bei Champion lohnt es nicht, weil Champion-Crests ab Woche 1 im Überfluss da sind." },
             { id = "r_crest_check", kind = "rule", block = "P2", proof = "ok",
-              text = "Trick nur ausführen, wenn das Upgrade-Fenster 0 höhere Crests anzeigt. Doppel-Slots wie Ringe, Trinkets und Einhandwaffen immer manuell prüfen." },
+              text = "Vor dem Trick prüfen, ob das Upgrade-Fenster 0 höhere Crests anzeigt.",
+              detail = "Doppel-Slots wie Ringe, Trinkets und Einhandwaffen immer manuell prüfen. Das alte Item erst verkaufen, wenn das Fenster die Nullkosten bestätigt." },
 
             { id = "r_accolade", kind = "rule", block = "P3", proof = "ok",
-              text = "Field Accolades: ab 750 gezielte Box bei dringendem Slot. Zwischen 500 und 749 nur, wenn über zwei Drittel echte Upgrades wären. Break-even liegt bei 500 zu 750, also 66,7 Prozent. Sonst sparen." },
+              text = "Field Accolades: ab 750 gezielte Box, darunter sparen.",
+              detail = "Zwischen 500 und 749 lohnt die Zufallsbox nur, wenn über zwei Drittel der Slots echte Upgrades wären. Break-even liegt bei 500 zu 750, also 66,7 Prozent. Kein Altcontent-Grind dafür." },
 
             { id = "r_no_grind", kind = "rule", block = "NO", proof = "ok",
               text = "Kein langer Altcontent-Grind für Accolades. Kein blindes Crest-Ausgeben. Kein drittes Embellishment." },
@@ -110,57 +118,70 @@ ns.SECTIONS = {
               text = "Patch-Kampagne und Freischaltungen abschließen. Öffnet Weeklies, Delves, Prey und Coiled Isle." },
 
             { id = "w0_m0tour", kind = "task", block = "P1", proof = "ok",
-              text = "Alle acht M0-Dungeons einmal. Diese Woche noch WÖCHENTLICHE ID. Gibt 292er Champion-Drops und drei Dungeon-Vault-Felder bei 1, 4 und 8 Runs." },
+              text = "Alle acht M0-Dungeons einmal laufen.",
+              detail = "Diese Woche gilt noch die WÖCHENTLICHE ID. Gibt 292er Champion-Drops und drei Dungeon-Vault-Felder bei 1, 4 und 8 Runs." },
 
             { id = "w0_aztarec", kind = "task", block = "P1", proof = "ok",
-              text = "Azta'rec im Delve Venomfall Deeps auf Stufe ? legen. 30 UNBEGRENZTE Hero Mistcrest, umgeht das Wochen-Cap. Zählt auch in der Gruppe." },
+              text = "Azta'rec auf Stufe ? legen. 30 unbegrenzte Hero Mistcrest.",
+              detail = "Nemesis-Boss im Delve Venomfall Deeps, Coiled Isle. Die Crests umgehen das Wochen-Cap. Zählt auch, wenn er in der Gruppe gelegt wird." },
 
             { id = "w0_delve_t11", kind = "task", block = "P1", proof = "ok",
-              text = "Delves bis Tier 11 pushen. Am Ende eines T11 fällt der Cracked Keystone." },
+              text = "Delves bis Tier 11 pushen.",
+              detail = "Am Ende eines T11-Delve fällt der Cracked Keystone, der die nächste Aufgabe startet." },
 
             { id = "w0_cracked", kind = "task", block = "P1", proof = "ok",
               check = { type = "quest", id = 92600 },
-              text = "Cracked Keystone abschließen: irgendeinen Dungeon auf Mythic 2 oder höher. Gibt 20 Hero und 20 Myth Mistcrest, UNBEGRENZT. Achtung: die Quest gibt einen M+-Keystone. Inventar-voll-Trick vorher machen." },
+              text = "Cracked Keystone abschließen: ein Dungeon auf Mythic 2 oder höher.",
+              detail = "Gibt 20 Hero und 20 Myth Mistcrest, unbegrenzt. Achtung: die Quest vergibt einen M+-Keystone. Wer den Inventar-voll-Trick für eine höhere Stufe nutzen will, muss das vorher machen." },
 
             { id = "70348198", kind = "task", block = "P1", proof = "ok",
               check = { type = "quest", id = 96446 },
-              text = "Wöchentliche Spark-Quest (Spark of Tides) bei Eldara Dawnrunner in Silvermoon abschließen." },
+              text = "Wöchentliche Spark-Quest abschließen.",
+              detail = "Spark of Tides bei Eldara Dawnrunner in Silvermoon." },
 
             { id = "w0_atalutek_map", kind = "task", block = "P1", proof = "ok",
-              text = "Vaults of Atal'Utek Wochenquest für die Trovehunter's Bounty Map." },
+              text = "Atal'Utek-Wochenquest holen für die Trovehunter's Bounty Map." },
 
             { id = "w0_map_t8", kind = "task", block = "P1", proof = "ok",
-              text = "Trovehunter's Bounty Map in einem Tier-8-Delve oder höher einsetzen. Schaltet die Hidden Trove frei und gibt das höchste Delve-Itemlevel im HERO-Track. Einzige Hero-Quelle dieser Woche." },
+              text = "Karte in einem Tier-8-Delve oder höher einsetzen.",
+              detail = "Schaltet die Hidden Trove frei und gibt das höchste Delve-Itemlevel im Hero-Track. Das ist die einzige Hero-Quelle dieser Woche." },
 
             { id = "w0_renown_pickup", kind = "task", block = "P1", proof = "ok",
-              text = "Freigeschaltetes, nicht abgeholtes Champion-Renown-Gear abholen, wenn der Slot unter 292 liegt. Silvermoon Court 9 Helm, Amani Tribe 9 Hals, Hara'ti 8 Gürtel, The Singularity 7 Schmuckstück, Zul'jarra's Forces 9 Armschienen." },
+              text = "Offenes Champion-Renown-Gear abholen, wenn der Slot unter 292 liegt.",
+              detail = "Silvermoon Court 9 Helm, Amani Tribe 9 Hals, Hara'ti 8 Gürtel, The Singularity 7 Schmuckstück, Zul'jarra's Forces 9 Armschienen." },
 
             { id = "w0_crucible", kind = "task", block = "P1", proof = "ok",
               check = { type = "quest", id = 93933 },
-              text = "Renown 7 bei The Singularity: Quest Guarded Treasures bei Void Researcher Anomander (52.5, 72.9) holen, vorher Stormarion Assault in Voidstorm abschließen. Gibt den Crucible of Erratic Energies. Gilt als Pre-Season-BiS-Trinket, weil die Void-Research-Fähigkeiten damit ÜBERALL proccen. Vorher simmen." },
+              text = "Crucible of Erratic Energies holen. Pre-Season-BiS-Trinket.",
+              detail = "Ab Renown 7 bei The Singularity: Quest Guarded Treasures bei Void Researcher Anomander (52.5, 72.9). Vorher das Stormarion Assault in Voidstorm abschließen. Gilt als BiS, weil die Void-Research-Fähigkeiten damit überall in Azeroth proccen statt nur in Voidstorm. Vorher simmen." },
 
             { id = "w0_weeklies", kind = "task", block = "P1", proof = "ok",
-              text = "Silvermoon- und Coiled-Isle-Wochenquests: Keys und Fragmente, Caches, Ruf." },
+              text = "Silvermoon- und Coiled-Isle-Wochenquests: Keys, Caches, Ruf." },
 
             { id = "w0_world8", kind = "task", block = "P1", proof = "ok",
               check = { type = "vault", row = "world", need = 8 },
-              text = "Acht World-Aktivitäten, idealerweise Delves Tier 6 oder höher. Gibt drei World-Vault-Felder. Erste Vault-Reihe maximal Champion 3/6, also 298." },
+              text = "Acht World-Aktivitäten, am besten Delves Tier 6 oder höher.",
+              detail = "Gibt drei World-Vault-Felder. Die erste Vault-Reihe liefert maximal Champion 3/6, also Itemlevel 298." },
 
             { id = "w0_vault3", kind = "task", block = "P1", proof = "single",
               check = { type = "vault", row = "world", need = 4 },
-              text = "Mindestens drei Delve-Vault-Felder füllen, damit ein SOCKEL überhaupt zur Wahl steht. Wer keine Raid-Splits macht, nimmt später lieber ein Tier-Teil." },
+              text = "Mindestens drei Delve-Vault-Felder füllen.",
+              detail = "Erst dann steht in der Vault ein Sockel zur Wahl. Wer keine Raid-Splits macht, nimmt später allerdings lieber ein Tier-Teil." },
 
             { id = "w0_hardprey", kind = "task", block = "P2", proof = "ok",
-              text = "Hard Prey und World-Lair NUR bei schwachen Slots. Geben 279er Veteran-Catch-up. Ab Itemlevel 286 aufwärts nicht mehr sinnvoll." },
+              text = "Hard Prey und World-Lair nur bei schwachen Slots.",
+              detail = "Geben 279er Veteran-Catch-up. Ab Itemlevel 286 aufwärts nicht mehr sinnvoll." },
 
             { id = "w0_lair_story", kind = "task", block = "P2", proof = "single",
               text = "Neuen Lair-Raidboss auf Story-Mode für LFR-Gear mitnehmen." },
 
             { id = "w0_save_keys", kind = "rule", block = "NO", proof = "ok",
-              text = "Restored Coffer Keys und Sparks NICHT ausgeben. Bountiful Delves öffnen erst am 19.08. Achtung: Die Trovehunter's Bounty Map ist ein ANDERER Gegenstand und soll sofort benutzt werden." },
+              text = "Restored Coffer Keys und Sparks nicht ausgeben.",
+              detail = "Bountiful Delves öffnen erst am 19.08. ACHTUNG Verwechslungsgefahr: Die Trovehunter's Bounty Map ist ein anderer Gegenstand und soll sofort benutzt werden." },
 
             { id = "w0_no_mistcrest", kind = "rule", block = "NO", proof = "ok",
-              text = "Mistcrests nicht in Übergangsitems verbrennen. Erst nach den wichtigen Drops ausgeben." },
+              text = "Mistcrests nicht in Übergangsitems verbrennen.",
+              detail = "Erst nach den wichtigen Drops der Woche ausgeben." },
 
             { id = "w0_no_pug_lair", kind = "rule", block = "NO", proof = "single",
               text = "Lair-Boss nicht auf Normal oder höher puggen. Für die Gilde aufsparen." },
@@ -174,7 +195,8 @@ ns.SECTIONS = {
         subtitle = "ab 19.08. – Season-Start",
         items = {
             { id = "w1_aztarec2", kind = "task", block = "P1", proof = "ok",
-              text = "Azta'rec auf Stufe ?? legen. 30 unbegrenzte Hero Mistcrest, oder 60 falls Stufe ? nicht gemacht, plus 30 unbegrenzte Myth Mistcrest." },
+              text = "Azta'rec auf Stufe ?? legen.",
+              detail = "30 unbegrenzte Hero Mistcrest, oder 60 falls Stufe ? nicht gemacht wurde, plus 30 unbegrenzte Myth Mistcrest. Der Gesamtertrag ist gleich, der frühe Kill verlagert ihn nur nach vorn." },
 
             { id = "70348198", kind = "task", block = "P1", proof = "ok",
               check = { type = "quest", id = 96446 },
@@ -185,19 +207,24 @@ ns.SECTIONS = {
               text = "Cracked Keystone erneut: T11-Delve, dann M2 oder höher. Wieder 20 Hero und 20 Myth unbegrenzt." },
 
             { id = "w1_bountiful", kind = "task", block = "P1", proof = "ok",
-              text = "Gesparte Restored Coffer Keys jetzt in Bountiful Delves Tier 8 oder höher einsetzen. Gibt 295er Champion. Delver's Bounty in T8+ gibt 305er Hero." },
+              text = "Gesparte Coffer Keys in Bountiful Delves ab Tier 8 einsetzen.",
+              detail = "Gibt 295er Champion. Delver's Bounty in T8 oder höher gibt 305er Hero." },
 
             { id = "w1_raid", kind = "task", block = "P1", proof = "ok",
-              text = "Raid Venomous Abyss auf der höchsten zuverlässig clearbaren Schwierigkeit. LFR gibt Champion, Normal gibt Hero, Heroic gibt Myth. Vault-Felder bei 2, 4 und 6 Bossen." },
+              text = "Venomous Abyss auf der höchsten zuverlässig clearbaren Schwierigkeit.",
+              detail = "LFR gibt Champion, Normal gibt Hero, Heroic gibt Myth. Vault-Felder bei 2, 4 und 6 Bossen." },
 
             { id = "w1_mplus", kind = "task", block = "P1", proof = "ok",
-              text = "Mythic+: ab +6 Hero-Drops, ab +9 Myth-Crests, ab +10 Myth 1/6 in der Vault. Vault-Felder bei 1, 4 und 8 Runs." },
+              text = "Mythic+ laufen. Ab +6 lohnt es, ab +10 für das Myth-Vault-Feld.",
+              detail = "Ab +6 fallen Hero-Drops, ab +9 gibt es Myth-Crests, ab +10 ein Myth 1/6 in der Vault. Vault-Felder bei 1, 4 und 8 Runs." },
 
             { id = "w1_prey", kind = "task", block = "P2", proof = "ok",
-              text = "Nightmare Prey für fehlende Slots. Bis fünfmal pro Woche 292er Champion." },
+              text = "Nightmare Prey für fehlende Slots.",
+              detail = "Bis fünfmal pro Woche, gibt 292er Champion." },
 
             { id = "w1_tier", kind = "task", block = "P2", proof = "ok",
-              text = "2er- und 4er-Setbonus prüfen. Catalyst nur bei sofortigem Setgewinn einsetzen." },
+              text = "Setbonus prüfen. Catalyst nur bei sofortigem Setgewinn.",
+              detail = "2er- und 4er-Bonus gegenrechnen, bevor eine Catalyst-Ladung verbraucht wird." },
 
             { id = "w1_lfr_tier", kind = "task", block = "P3", proof = "single",
               text = "LFR für Tier-Teile, falls noch welche fehlen." },
@@ -214,13 +241,16 @@ ns.SECTIONS = {
         subtitle = "ab 26.08. – erste Season-2-Vault",
         items = {
             { id = "w2_vault", kind = "task", block = "P1", proof = "ok",
-              text = "Erste Season-2-Great-Vault prüfen. Entscheidung NICHT voreilig treffen, Raid, M+ und Delves können am selben Tag besser droppen." },
+              text = "Erste Season-2-Vault prüfen, Entscheidung nicht voreilig treffen.",
+              detail = "Raid, M+ und Delves können am selben Tag noch besser droppen. Erst am Ende des Tages entscheiden." },
 
             { id = "w2_voidcore", kind = "task", block = "P1", proof = "ok",
-              text = "Ab jetzt gibt es Voidcores aus der Vault. Ein Bonus Roll kostet EINEN Voidcore, gleicher Preis wie M+, Bountiful Delves und Nightmare Prey." },
+              text = "Voidcore aus der Vault nehmen, wenn ein Bonus Roll geplant ist.",
+              detail = "Ein Bonus Roll kostet einen Voidcore, gleicher Preis wie bei M+, Bountiful Delves und Nightmare Prey." },
 
             { id = "w2_bonusroll", kind = "rule", block = "P1", proof = "ok",
-              text = "Bonus Roll springt auf die erste Stufe des NÄCHSTHÖHEREN Tracks. Heroic gibt ein Myth-Track-Teil, Mythic gibt ein voll aufgewertetes. Weil M+ Voidcores zum selben Preis erzeugt, finanziert eine starke M+-Woche einen späteren Raid-Roll." },
+              text = "Bonus Roll springt auf die erste Stufe des nächsthöheren Tracks.",
+              detail = "Heroic gibt ein Myth-Track-Teil, Mythic gibt ein voll aufgewertetes. Weil M+ Voidcores zum selben Preis erzeugt, finanziert eine starke M+-Woche einen späteren Raid-Roll." },
 
             { id = "70348198_w2", kind = "task", block = "P1", proof = "ok",
               check = { type = "quest", id = 96446 },
@@ -241,13 +271,16 @@ ns.SECTIONS = {
         subtitle = "Im Spiel prüfen, dann hier festschreiben",
         items = {
             { id = "o_aztarec_diff", kind = "rule", block = "P3", proof = "single",
-              text = "Was genau bedeuten die Nemesis-Stufen ? und ?? bei Azta'rec? Method und Icy Veins schreiben es identisch, im Spiel gegenprüfen." },
+              text = "Was bedeuten die Nemesis-Stufen ? und ?? bei Azta'rec?",
+              detail = "Method und Icy Veins schreiben beide ? und ??, es ist also offenbar die echte Bezeichnung. Im Spiel gegenprüfen." },
 
             { id = "o_toxic_tour", kind = "rule", block = "P3", proof = "single",
-              text = "Gibt die Kampagnenquest A Toxic Tour ein halbes 1/6-Champion-Item? Nicht bestätigt. Die Karte kommt laut Method aus der WOCHENQUEST von Warleader Abdumati." },
+              text = "Gibt A Toxic Tour ein halbes 1/6-Champion-Item?",
+              detail = "Nicht bestätigt. Die Trovehunter's Bounty Map kommt laut Method aus der Wochenquest von Warleader Abdumati, nicht aus der Kampagnenquest." },
 
             { id = "o_crucible_ilvl", kind = "rule", block = "P3", proof = "single",
-              text = "Auf welches Itemlevel lässt sich der Crucible of Erratic Energies maximal aufwerten? Larias sagt 295, nicht bestätigt. Eine Quelle nennt Start-Itemlevel 246, was nicht zur Champion-Spanne 285 bis 302 passt." },
+              text = "Wie weit lässt sich der Crucible aufwerten?",
+              detail = "Larias sagt 295, nicht bestätigt. Eine Quelle nennt Start-Itemlevel 246, was nicht zur Champion-Spanne 285 bis 302 passt. Vermutlich veralteter PTR-Stand." },
         },
     },
 }
