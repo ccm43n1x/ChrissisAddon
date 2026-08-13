@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.8.1 - Logik
+    Chrissi's Addon v0.9.0 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -113,6 +113,8 @@ local DEFAULTS = {
     pinnedCollapsed = false, -- Waehrungsblock auf die Gear-Crests reduzieren
     expanded = false,        -- Fenster auf die volle Listenhoehe ziehen
     alpha = 0.88,            -- Deckkraft der Flaeche
+    questSnapshot = false,   -- gemerkte Questliste fuer /chrissi questdiff
+    questWatch = false,      -- jede abgegebene Quest ins Chatfenster melden
 }
 
 local CHAR_DEFAULTS = { checks = {} }
@@ -394,43 +396,57 @@ AddHairlineBorder(frame)
 --   1. eine Flaeche, die beim Darueberfahren aufleuchtet (Hover)
 --   2. im RUHEZUSTAND eine feine Unterlinie bei Text bzw. ein Kasten bei Glyphen
 -- Ohne (2) erkennt man den Schalter erst, wenn man zufaellig drueberfaehrt.
-local function MakeInteractive(b, opts)
+-- Drei Zustaende, wie in Apples Komponenten-Doku: Ruhe, Hover, gedrueckt.
+-- Flache Fuellung ohne Verlauf, damit es zu EllesmereUI passt.
+local BTN = {
+    idle  = { fill = 0.07, edge = 0.18 },
+    hover = { fill = 0.15, edge = 0.38 },
+    down  = { fill = 0.24, edge = 0.50 },
+}
+
+local function SetButtonState(b, state)
+    local s = BTN[state] or BTN.idle
+    b.btnFill:SetColorTexture(1, 1, 1, s.fill)
+    for _, t in ipairs(b.btnEdges) do t:SetColorTexture(1, 1, 1, s.edge) end
+    if b.label and b.btnText then
+        b.label:SetText("|c" .. ((state == "idle") and (b.btnIdle or INK_DIM) or GOLD) .. b.btnText .. "|r")
+    end
+end
+
+local function StyleButton(b, opts)
     opts = opts or {}
 
-    local hl = b:CreateTexture(nil, "BACKGROUND")
-    hl:SetColorTexture(1, 1, 1, 0.09)
-    hl:SetPoint("TOPLEFT", -4, 2)
-    hl:SetPoint("BOTTOMRIGHT", 4, -2)
-    hl:Hide()
-    b.hoverBg = hl
+    -- Gefuellte Flaeche PLUS Rahmen. Ein reiner Textschalter liest sich nicht
+    -- als Knopf, egal wie gut der Hover ist. Das war der Kernfehler bisher.
+    local fill = b:CreateTexture(nil, "BACKGROUND")
+    fill:SetAllPoints()
+    b.btnFill = fill
 
-    if opts.underline then
-        local ul = b:CreateTexture(nil, "ARTWORK")
-        ul:SetHeight(1)
-        ul:SetColorTexture(1, 1, 1, 0.20)
-        ul:SetPoint("BOTTOMLEFT", 0, -2)
-        ul:SetPoint("BOTTOMRIGHT", 0, -2)
+    b.btnEdges = {}
+    for _, p in ipairs({
+        { "TOPLEFT", "TOPRIGHT", "h" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "h" },
+        { "TOPLEFT", "BOTTOMLEFT", "v" }, { "TOPRIGHT", "BOTTOMRIGHT", "v" },
+    }) do
+        local t = b:CreateTexture(nil, "BORDER")
+        t:SetPoint(p[1]); t:SetPoint(p[2])
+        if p[3] == "h" then t:SetHeight(1) else t:SetWidth(1) end
+        b.btnEdges[#b.btnEdges + 1] = t
     end
 
-    if opts.box then
-        for _, p in ipairs({
-            { "TOPLEFT", "TOPRIGHT", "h" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "h" },
-            { "TOPLEFT", "BOTTOMLEFT", "v" }, { "TOPRIGHT", "BOTTOMRIGHT", "v" },
-        }) do
-            local t = b:CreateTexture(nil, "ARTWORK")
-            t:SetColorTexture(1, 1, 1, 0.15)
-            t:SetPoint(p[1]); t:SetPoint(p[2])
-            if p[3] == "h" then t:SetHeight(1) else t:SetWidth(1) end
-        end
-    end
+    b.btnText = opts.text   -- damit der Zustandswechsel die Beschriftung faerben kann
+    b.btnIdle = opts.idle   -- Ruhefarbe, falls heller als der Standard sein soll
+    SetButtonState(b, "idle")
+
+    -- Trefferflaeche vergroessern. Apple verlangt 44x44 fuer Finger. Fuer die
+    -- Maus ist das uebertrieben, aber die 16x16 von vorher waren zu klein.
+    if b.SetHitRectInsets then b:SetHitRectInsets(-3, -3, -3, -3) end
 
     -- HookScript statt SetScript, damit die vorhandenen Tooltip-Handler
-    -- erhalten bleiben. Deshalb wird das hier erst NACH allen SetScript-
-    -- Aufrufen angewandt, sonst wuerden die Hooks wieder ueberschrieben.
-    b:HookScript("OnEnter", function(self) self.hoverBg:Show() end)
-    b:HookScript("OnLeave", function(self) self.hoverBg:Hide() end)
-    b:HookScript("OnMouseDown", function(self) self.hoverBg:SetColorTexture(1, 1, 1, 0.17) end)
-    b:HookScript("OnMouseUp",   function(self) self.hoverBg:SetColorTexture(1, 1, 1, 0.09) end)
+    -- erhalten bleiben. Deshalb erst NACH allen SetScript-Aufrufen anwenden.
+    b:HookScript("OnEnter",     function(self) SetButtonState(self, "hover") end)
+    b:HookScript("OnLeave",     function(self) SetButtonState(self, "idle") end)
+    b:HookScript("OnMouseDown", function(self) SetButtonState(self, "down") end)
+    b:HookScript("OnMouseUp",   function(self) SetButtonState(self, "hover") end)
 
     return b
 end
@@ -457,7 +473,7 @@ subTitle:SetJustifyH("LEFT")
 
 -- Schlichtes Kreuz statt Blizzard-Knopf
 local closeBtn = CreateFrame("Button", nil, frame)
-closeBtn:SetSize(18, 18)
+closeBtn:SetSize(20, 20)
 closeBtn:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD + 4, -PAD + 2)
 closeBtn.label = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 closeBtn.label:SetPoint("CENTER")
@@ -513,9 +529,9 @@ end
 
 -- Währungsblock ein- und ausklappen
 local pinnedToggle = CreateFrame("Button", nil, frame)
-pinnedToggle:SetHeight(16)
+pinnedToggle:SetHeight(21)
 pinnedToggle.label = pinnedToggle:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-pinnedToggle.label:SetPoint("RIGHT")
+pinnedToggle.label:SetPoint("CENTER")
 pinnedToggle:SetScript("OnClick", function()
     ChrissisAddonDB.pinnedCollapsed = not ChrissisAddonDB.pinnedCollapsed
     ns.Render()
@@ -570,9 +586,9 @@ tabRule:SetColorTexture(1, 1, 1, RULE_ALPHA)
 -- Erledigte ausblenden. Bei 17 Einträgen pro Woche, von denen zehn erledigt
 -- sind, scrollt man sonst an totem Gewicht vorbei.
 local hideDoneBtn = CreateFrame("Button", nil, frame)
-hideDoneBtn:SetHeight(20)
+hideDoneBtn:SetHeight(21)
 hideDoneBtn.label = hideDoneBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-hideDoneBtn.label:SetPoint("RIGHT")
+hideDoneBtn.label:SetPoint("CENTER")
 hideDoneBtn:SetScript("OnClick", function()
     ChrissisAddonDB.hideDone = not ChrissisAddonDB.hideDone
     ns.Render()
@@ -598,7 +614,7 @@ nav:SetHeight(38)
 
 local function CreateArrow(text)
     local b = CreateFrame("Button", nil, nav)
-    b:SetSize(22, 22)
+    b:SetSize(26, 24)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     b.label:SetPoint("CENTER")
     b.label:SetText(text)
@@ -623,13 +639,13 @@ local navSub = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 navSub:SetPoint("TOP", navTitle, "BOTTOM", 0, -2)
 
 local navMeterBg = nav:CreateTexture(nil, "ARTWORK")
-navMeterBg:SetHeight(2)
+navMeterBg:SetHeight(3)
 navMeterBg:SetPoint("BOTTOMLEFT", nav, "BOTTOMLEFT", 0, 0)
 navMeterBg:SetPoint("BOTTOMRIGHT", nav, "BOTTOMRIGHT", 0, 0)
 navMeterBg:SetColorTexture(1, 1, 1, 0.07)
 
 local navMeterFill = nav:CreateTexture(nil, "OVERLAY")
-navMeterFill:SetHeight(2)
+navMeterFill:SetHeight(3)
 navMeterFill:SetPoint("BOTTOMLEFT", navMeterBg, "BOTTOMLEFT", 0, 0)
 
 local navCount = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -681,14 +697,30 @@ ns.ApplyScale = ApplyScale
 local scaleText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 scaleText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 9)
 
+-- Vorwärtsdeklaration. Ohne sie greifen die Klick-Handler weiter unten auf
+-- eine GLOBALE Variable zu, die es nicht gibt, weil die echten Funktionen
+-- erst danach definiert werden. Genau daran sind die Deckkraft-Knöpfe in
+-- v0.8.0 gescheitert: Tooltip ging, Tastenkürzel ging, Klick lief ins Leere.
+local ApplyAlpha, ApplyShadows
+
 local function CreateStepButton(text, delta)
     local b = CreateFrame("Button", nil, frame)
-    b:SetSize(16, 16)
+    b:SetSize(22, 20)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     b.label:SetPoint("CENTER")
     b.label:SetText("|c" .. INK_DIM .. text .. "|r")
-    b:SetScript("OnEnter", function(self) self.label:SetText("|c" .. GOLD .. text .. "|r") end)
-    b:SetScript("OnLeave", function(self) self.label:SetText("|c" .. INK_DIM .. text .. "|r") end)
+    b:SetScript("OnEnter", function(self)
+        self.label:SetText("|c" .. GOLD .. text .. "|r")
+        AnchorTooltip(self)
+        GameTooltip:AddLine("Größe des Fensters", 1, 1, 1)
+        GameTooltip:AddLine("Strg + Mausrad geht auch, oder /chrissi scale 120. Bereich 50 bis 150 Prozent.",
+            0.65, 0.63, 0.58, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.label:SetText("|c" .. INK_DIM .. text .. "|r")
+        GameTooltip:Hide()
+    end)
     b:SetScript("OnClick", function()
         ApplyScale((tonumber(ChrissisAddonDB.scale) or 1) + delta)
         ns.Render()
@@ -703,7 +735,7 @@ scaleMinus:SetPoint("RIGHT", scalePlus, "LEFT", -6, 0)
 
 local function CreateAlphaButton(text, delta)
     local b = CreateFrame("Button", nil, frame)
-    b:SetSize(16, 16)
+    b:SetSize(22, 20)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     b.label:SetPoint("CENTER")
     b.label:SetText("|c" .. INK_DIM .. text .. "|r")
@@ -738,7 +770,7 @@ alphaPlus:SetPoint("LEFT", alphaMinus, "RIGHT", 6, 0)
 -- desto staerker. Das System loest das Problem, nicht der Nutzer.
 local shadowAlpha = 0.5
 
-local function ApplyAlpha(v)
+function ApplyAlpha(v)
     v = math.max(ALPHA_MIN, math.min(ALPHA_MAX, v))
     v = math.floor(v * 100 + 0.5) / 100
     ChrissisAddonDB.alpha = v
@@ -752,7 +784,7 @@ ns.ApplyAlpha = ApplyAlpha
 -- Schatten auf ALLE Schriftzuege im Fenster, auch auf die aus dem Pool.
 -- Wird am Ende jedes Renderns aufgerufen, damit neu erzeugte Zeilen ihn
 -- ebenfalls bekommen.
-local function ApplyShadows(f)
+function ApplyShadows(f)
     for _, r in ipairs({ f:GetRegions() }) do
         if r.SetShadowColor then
             r:SetShadowOffset(1, -1)
@@ -770,7 +802,7 @@ alphaText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD + 48, 9)
 -- Fenster auf die volle Listenhöhe ziehen. Mittig auf der Fußzeile, damit es
 -- nicht mit der Skalierung rechts verwechselt wird.
 local expandBtn = CreateFrame("Button", nil, frame)
-expandBtn:SetSize(28, 18)
+expandBtn:SetSize(34, 20)
 expandBtn:SetPoint("BOTTOM", frame, "BOTTOM", 0, 6)
 expandBtn.label = expandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 expandBtn.label:SetPoint("CENTER")
@@ -829,18 +861,18 @@ end)
 
 -- Alle Schalter jetzt sichtbar machen. Bewusst HIER, nach allen SetScript-
 -- Aufrufen, weil HookScript sonst wieder ueberschrieben wuerde.
-MakeInteractive(closeBtn,     { box = true })
-MakeInteractive(pinnedToggle, { underline = true })
-MakeInteractive(hideDoneBtn,  { underline = true })
-MakeInteractive(tabGuide)      -- Reiter tragen ihre Aktiv-Linie schon selbst
-MakeInteractive(tabCurrency)
-MakeInteractive(navPrev,    { box = true })
-MakeInteractive(navNext,    { box = true })
-MakeInteractive(expandBtn,  { box = true })
-MakeInteractive(scaleMinus, { box = true })
-MakeInteractive(scalePlus,  { box = true })
-MakeInteractive(alphaMinus, { box = true })
-MakeInteractive(alphaPlus,  { box = true })
+StyleButton(closeBtn,     { text = "x" })
+StyleButton(pinnedToggle)
+StyleButton(hideDoneBtn)
+-- Reiter bleiben Text mit Aktiv-Linie. Ein Reiter ist kein Knopf.
+
+StyleButton(navPrev,    { text = "<", idle = INK })
+StyleButton(navNext,    { text = ">", idle = INK })
+StyleButton(expandBtn)
+StyleButton(scaleMinus, { text = "-" })
+StyleButton(scalePlus,  { text = "+" })
+StyleButton(alphaMinus, { text = "-" })
+StyleButton(alphaPlus,  { text = "+" })
 
 -- ============================================================================
 -- F) Widget-Pools
@@ -867,14 +899,17 @@ local function NewLine(parent)
     f.value:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -2)
     f.value:SetJustifyH("RIGHT")
 
-    f.meterBg = f:CreateTexture(nil, "ARTWORK")
-    f.meterBg:SetHeight(2)
-    f.meterBg:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 20, 1)
+    -- Fortschritt als Fläche HINTER der Zeile, nicht als Haarlinie darunter.
+    -- Vorbild ist der Damage-Meter in EllesmereUI: die Zeile selbst füllt sich.
+    -- Eine 2px-Linie unter dem Text las sich wie ein Unterstrich, nicht wie
+    -- ein Messwert.
+    f.meterBg = f:CreateTexture(nil, "BACKGROUND")
+    f.meterBg:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -1)
     f.meterBg:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 1)
-    f.meterBg:SetColorTexture(1, 1, 1, 0.07)
+    f.meterBg:SetColorTexture(1, 1, 1, 0.035)
 
-    f.meterFill = f:CreateTexture(nil, "OVERLAY")
-    f.meterFill:SetHeight(2)
+    f.meterFill = f:CreateTexture(nil, "BACKGROUND")
+    f.meterFill:SetPoint("TOPLEFT", f.meterBg, "TOPLEFT", 0, 0)
     f.meterFill:SetPoint("BOTTOMLEFT", f.meterBg, "BOTTOMLEFT", 0, 0)
 
     return f
@@ -987,9 +1022,12 @@ local function RenderPinned()
             frac = math.max(0, math.min(1, frac))
             row.meterBg:Show(); row.meterFill:Show()
             if frac >= 1 then
-                row.meterFill:SetColorTexture(HexToRGB(ns.BLOCKS.P2.color))
+                -- Cap erreicht: bernsteinfarben, weil das eine Handlungs-
+                -- aufforderung ist. Bewusst gedeckt, damit der Text lesbar bleibt.
+                local r, g, b = HexToRGB(ns.BLOCKS.P2.color)
+                row.meterFill:SetColorTexture(r, g, b, 0.22)
             else
-                row.meterFill:SetColorTexture(1, 1, 1, 0.34)
+                row.meterFill:SetColorTexture(1, 1, 1, 0.085)
             end
             row.meterFill:SetWidth(math.max(1, (CONTENT_W - 20) * frac))
         else
@@ -1218,7 +1256,7 @@ function ns.Render()
     else
         pinnedToggle.label:SetText("|c" .. INK_DIM .. "nur Crests|r")
     end
-    pinnedToggle:SetWidth(pinnedToggle.label:GetStringWidth() + 4)
+    pinnedToggle:SetWidth(pinnedToggle.label:GetStringWidth() + 18)
 
     local ruleY = toggleY - 18
     pinnedRule:ClearAllPoints()
@@ -1247,7 +1285,7 @@ function ns.Render()
         hideDoneBtn.label:SetText(ChrissisAddonDB.hideDone
             and ("|c" .. GOLD .. "Erledigte ausgeblendet|r")
             or  ("|c" .. INK_DIM .. "Erledigte ausblenden|r"))
-        hideDoneBtn:SetWidth(hideDoneBtn.label:GetStringWidth() + 4)
+        hideDoneBtn:SetWidth(hideDoneBtn.label:GetStringWidth() + 18)
         hideDoneBtn:Show()
     else
         hideDoneBtn:Hide()
@@ -1309,8 +1347,7 @@ function ns.Render()
             navCount:SetText("")
         end
 
-        navPrev.label:SetTextColor(HexToRGB(INK))
-        navNext.label:SetTextColor(HexToRGB(INK))
+        -- Farbe der Pfeile regelt jetzt der Button-Zustand, nicht mehr hier
 
         contentTop = tabRuleY - 8 - 38 - 8
     else
@@ -1386,6 +1423,18 @@ init:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
 init:RegisterEvent("WEEKLY_REWARDS_UPDATE")
 
 init:SetScript("OnEvent", function(self, event, arg1)
+    -- Mitschnitt: Das Event traegt die Quest-ID selbst. Das ist der direkte
+    -- Weg, unabhaengig davon ob die Quest in der Abschlussliste auftaucht.
+    if event == "QUEST_TURNED_IN" and ChrissisAddonDB and ChrissisAddonDB.questWatch then
+        local title
+        if C_QuestLog and C_QuestLog.GetTitleForQuestID then
+            local ok, t = pcall(C_QuestLog.GetTitleForQuestID, arg1)
+            if ok then title = t end
+        end
+        print(string.format("|cff33ff99Chrissi:|r Quest abgegeben, ID |cffffd100%s|r  %s",
+            tostring(arg1), title or ""))
+    end
+
     if event == "ADDON_LOADED" and arg1 == addonName then
         ApplyDefaults()
         frame:ClearAllPoints()
@@ -1433,7 +1482,8 @@ local function PrintCurrencyScan()
     end
 end
 
-local questSnapshot
+-- Bewusst in den SavedVariables statt als lokale Variable: sonst ist der
+-- gemerkte Stand nach jedem /reload weg und der Vergleich laeuft ins Leere.
 
 local function TakeQuestSnapshot()
     local set, count = {}, 0
@@ -1452,14 +1502,14 @@ local function PrintQuestDiff()
         print("|cff33ff99Chrissi's Addon|r Quest-Liste nicht verfügbar.")
         return
     end
-    if not questSnapshot then
-        questSnapshot = now
+    if not ChrissisAddonDB.questSnapshot then
+        ChrissisAddonDB.questSnapshot = now
         print(string.format("|cff33ff99Chrissi's Addon|r %d abgeschlossene Quests gemerkt. Quest erledigen, dann |cffffd100/chrissi questdiff|r erneut.", count))
         return
     end
     local new = {}
     for id in pairs(now) do
-        if not questSnapshot[id] then new[#new + 1] = id end
+        if not ChrissisAddonDB.questSnapshot[id] then new[#new + 1] = id end
     end
     table.sort(new)
     if #new == 0 then
@@ -1474,7 +1524,7 @@ local function PrintQuestDiff()
             print(string.format("  |cffffd100%d|r  %s", id, (okT and t) or "(Name noch nicht geladen)"))
         end
     end
-    questSnapshot = now
+    ChrissisAddonDB.questSnapshot = now
 end
 
 local function PrintFactions()
@@ -1548,6 +1598,11 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
     elseif cmd == "questdiff" then
         PrintQuestDiff()
 
+    elseif cmd == "watch" then
+        ChrissisAddonDB.questWatch = not ChrissisAddonDB.questWatch
+        print("|cff33ff99Chrissi's Addon|r Quest-Mitschnitt: "
+            .. (ChrissisAddonDB.questWatch and "an. Jede abgegebene Quest nennt jetzt ihre ID." or "aus."))
+
     elseif cmd == "factions" then
         PrintFactions()
 
@@ -1613,6 +1668,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("  |cffffd100/chrissi reset|r      Position und Größe zurücksetzen")
         print("|cff808080  Werkzeuge zum Ermitteln fehlender IDs:|r")
         print("  |cffffd100/chrissi scan|r       Alle Währungs-IDs")
+        print("  |cffffd100/chrissi watch|r      Jede abgegebene Quest meldet ihre ID")
         print("  |cffffd100/chrissi questdiff|r  Neue Quest-IDs (vorher und nachher aufrufen)")
         print("  |cffffd100/chrissi factions|r   Fraktions-IDs und Renown-Stand")
         print("  |cffffd100/chrissi vault|r      Great-Vault-Rohdaten")
