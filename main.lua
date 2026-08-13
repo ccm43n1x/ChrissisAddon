@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.7.0 - Logik
+    Chrissi's Addon v0.8.0 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -35,6 +35,9 @@ local WINDOW_HEIGHT = 600
 local PAD           = 16
 
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.5, 1.5, 0.05
+-- Untergrenze bewusst bei 0,35: darunter wird Text auch mit Schatten
+-- unlesbar, egal wie hell die Schrift ist.
+local ALPHA_MIN, ALPHA_MAX, ALPHA_STEP = 0.35, 1.0, 0.05
 
 -- Angepinnte Währungen. IDs sind sprachunabhängig und funktionieren auch bei
 -- eingeklappter Kategorie. Ermittelt über /chrissi scan am 13.08.2026.
@@ -106,6 +109,7 @@ local DEFAULTS = {
     hideDone = false,        -- Erledigte ausblenden
     pinnedCollapsed = false, -- Waehrungsblock auf die Gear-Crests reduzieren
     expanded = false,        -- Fenster auf die volle Listenhoehe ziehen
+    alpha = 0.88,            -- Deckkraft der Flaeche
 }
 
 local CHAR_DEFAULTS = { checks = {} }
@@ -382,6 +386,52 @@ local function AddHairlineBorder(f, alpha)
 end
 AddHairlineBorder(frame)
 
+-- Klickbares muss aussehen wie klickbar. Das war der groesste blinde Fleck:
+-- flache Textschalter lesen sich wie normaler Text. Zwei Signale:
+--   1. eine Flaeche, die beim Darueberfahren aufleuchtet (Hover)
+--   2. im RUHEZUSTAND eine feine Unterlinie bei Text bzw. ein Kasten bei Glyphen
+-- Ohne (2) erkennt man den Schalter erst, wenn man zufaellig drueberfaehrt.
+local function MakeInteractive(b, opts)
+    opts = opts or {}
+
+    local hl = b:CreateTexture(nil, "BACKGROUND")
+    hl:SetColorTexture(1, 1, 1, 0.09)
+    hl:SetPoint("TOPLEFT", -4, 2)
+    hl:SetPoint("BOTTOMRIGHT", 4, -2)
+    hl:Hide()
+    b.hoverBg = hl
+
+    if opts.underline then
+        local ul = b:CreateTexture(nil, "ARTWORK")
+        ul:SetHeight(1)
+        ul:SetColorTexture(1, 1, 1, 0.20)
+        ul:SetPoint("BOTTOMLEFT", 0, -2)
+        ul:SetPoint("BOTTOMRIGHT", 0, -2)
+    end
+
+    if opts.box then
+        for _, p in ipairs({
+            { "TOPLEFT", "TOPRIGHT", "h" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "h" },
+            { "TOPLEFT", "BOTTOMLEFT", "v" }, { "TOPRIGHT", "BOTTOMRIGHT", "v" },
+        }) do
+            local t = b:CreateTexture(nil, "ARTWORK")
+            t:SetColorTexture(1, 1, 1, 0.15)
+            t:SetPoint(p[1]); t:SetPoint(p[2])
+            if p[3] == "h" then t:SetHeight(1) else t:SetWidth(1) end
+        end
+    end
+
+    -- HookScript statt SetScript, damit die vorhandenen Tooltip-Handler
+    -- erhalten bleiben. Deshalb wird das hier erst NACH allen SetScript-
+    -- Aufrufen angewandt, sonst wuerden die Hooks wieder ueberschrieben.
+    b:HookScript("OnEnter", function(self) self.hoverBg:Show() end)
+    b:HookScript("OnLeave", function(self) self.hoverBg:Hide() end)
+    b:HookScript("OnMouseDown", function(self) self.hoverBg:SetColorTexture(1, 1, 1, 0.17) end)
+    b:HookScript("OnMouseUp",   function(self) self.hoverBg:SetColorTexture(1, 1, 1, 0.09) end)
+
+    return b
+end
+
 frame:SetMovable(true)
 frame:EnableMouse(true)
 frame:RegisterForDrag("LeftButton")
@@ -437,17 +487,23 @@ local function AnchorTooltip(owner)
     GameTooltip:SetOwner(owner, "ANCHOR_NONE")
     GameTooltip:ClearAllPoints()
     GameTooltip:SetMinimumWidth(260)
+    GameTooltip:SetClampedToScreen(true)
 
-    -- Rechts andocken, wenn dort Platz ist, sonst links. Beide Seiten in
-    -- Bildschirmpixeln rechnen, weil das Fenster skaliert sein kann.
+    -- HORIZONTAL am Fensterrand, VERTIKAL auf Höhe der Zeile. Nur so bleibt
+    -- der Bezug zur Zeile erhalten, ohne dass sich der Tooltip über den
+    -- Inhalt legt, den er erklärt.
+    local dy = (owner:GetTop() or 0) - (frame:GetTop() or 0)
+
+    -- Rechts andocken, wenn dort Platz ist, sonst links. In Bildschirmpixeln
+    -- rechnen, weil das Fenster skaliert sein kann.
     local scale = frame:GetEffectiveScale()
     local rightEdge = (frame:GetRight() or 0) * scale
     local screenW = (UIParent:GetWidth() or 1920) * UIParent:GetEffectiveScale()
 
     if rightEdge + 300 * scale < screenW then
-        GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
+        GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, dy)
     else
-        GameTooltip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -8, 0)
+        GameTooltip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -8, dy)
     end
 end
 
@@ -638,12 +694,74 @@ end
 
 local scaleMinus = CreateStepButton("-", -SCALE_STEP)
 local scalePlus  = CreateStepButton("+",  SCALE_STEP)
-scalePlus:SetPoint("RIGHT", scaleText, "LEFT", -6, 0)
-scaleMinus:SetPoint("RIGHT", scalePlus, "LEFT", -2, 0)
+scalePlus:SetPoint("RIGHT", scaleText, "LEFT", -8, 0)
+scaleMinus:SetPoint("RIGHT", scalePlus, "LEFT", -6, 0)
 
-local scaleHint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-scaleHint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 9)
-scaleHint:SetText("|c" .. INK_DONE .. "Strg + Mausrad: Größe|r")
+local function CreateAlphaButton(text, delta)
+    local b = CreateFrame("Button", nil, frame)
+    b:SetSize(16, 16)
+    b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    b.label:SetPoint("CENTER")
+    b.label:SetText("|c" .. INK_DIM .. text .. "|r")
+    b:SetScript("OnEnter", function(self)
+        self.label:SetText("|c" .. GOLD .. text .. "|r")
+        AnchorTooltip(self)
+        GameTooltip:AddLine("Deckkraft des Fensters", 1, 1, 1)
+        GameTooltip:AddLine("Alt + Mausrad geht auch. Der Textschatten zieht automatisch nach, damit die Schrift lesbar bleibt.",
+            0.65, 0.63, 0.58, true)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function(self)
+        self.label:SetText("|c" .. INK_DIM .. text .. "|r")
+        GameTooltip:Hide()
+    end)
+    b:SetScript("OnClick", function()
+        ApplyAlpha((tonumber(ChrissisAddonDB.alpha) or BG_A) + delta)
+        ns.Render()
+    end)
+    return b
+end
+
+local alphaMinus = CreateAlphaButton("-", -ALPHA_STEP)
+local alphaPlus  = CreateAlphaButton("+",  ALPHA_STEP)
+alphaMinus:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
+alphaPlus:SetPoint("LEFT", alphaMinus, "RIGHT", 6, 0)
+
+-- Deckkraft ------------------------------------------------------------------
+-- Je durchsichtiger das Fenster, desto mehr Spielwelt scheint durch und desto
+-- schlechter der Textkontrast. Deshalb ist der Schatten NICHT einzeln
+-- einstellbar, sondern haengt automatisch an der Deckkraft: je durchsichtiger,
+-- desto staerker. Das System loest das Problem, nicht der Nutzer.
+local shadowAlpha = 0.5
+
+local function ApplyAlpha(v)
+    v = math.max(ALPHA_MIN, math.min(ALPHA_MAX, v))
+    v = math.floor(v * 100 + 0.5) / 100
+    ChrissisAddonDB.alpha = v
+    bg:SetColorTexture(BG_R, BG_G, BG_B, v)
+    -- Linear von 0,45 bei voller Deckung auf 1,0 bei minimaler
+    shadowAlpha = 0.45 + (1 - (v - ALPHA_MIN) / (ALPHA_MAX - ALPHA_MIN)) * 0.55
+    return v
+end
+ns.ApplyAlpha = ApplyAlpha
+
+-- Schatten auf ALLE Schriftzuege im Fenster, auch auf die aus dem Pool.
+-- Wird am Ende jedes Renderns aufgerufen, damit neu erzeugte Zeilen ihn
+-- ebenfalls bekommen.
+local function ApplyShadows(f)
+    for _, r in ipairs({ f:GetRegions() }) do
+        if r.SetShadowColor then
+            r:SetShadowOffset(1, -1)
+            r:SetShadowColor(0, 0, 0, shadowAlpha)
+        end
+    end
+    for _, c in ipairs({ f:GetChildren() }) do ApplyShadows(c) end
+end
+
+local alphaText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+-- Links Deckkraft, rechts Größe. Zwei gleichartige Regler, spiegelbildlich
+-- angeordnet, damit man sie nicht verwechselt.
+alphaText:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD + 48, 9)
 
 -- Fenster auf die volle Listenhöhe ziehen. Mittig auf der Fußzeile, damit es
 -- nicht mit der Skalierung rechts verwechselt wird.
@@ -682,6 +800,11 @@ scrollFrame:SetScript("OnMouseWheel", function(self, delta)
         ns.Render()
         return
     end
+    if IsAltKeyDown() then
+        ApplyAlpha((tonumber(ChrissisAddonDB.alpha) or BG_A) + delta * ALPHA_STEP)
+        ns.Render()
+        return
+    end
     local new = self:GetVerticalScroll() - (delta * 34)
     local max = self:GetVerticalScrollRange()
     if new < 0 then new = 0 end
@@ -694,8 +817,26 @@ frame:SetScript("OnMouseWheel", function(_, delta)
     if IsControlKeyDown() then
         ApplyScale((tonumber(ChrissisAddonDB.scale) or 1) + delta * SCALE_STEP)
         ns.Render()
+    elseif IsAltKeyDown() then
+        ApplyAlpha((tonumber(ChrissisAddonDB.alpha) or BG_A) + delta * ALPHA_STEP)
+        ns.Render()
     end
 end)
+
+-- Alle Schalter jetzt sichtbar machen. Bewusst HIER, nach allen SetScript-
+-- Aufrufen, weil HookScript sonst wieder ueberschrieben wuerde.
+MakeInteractive(closeBtn,     { box = true })
+MakeInteractive(pinnedToggle, { underline = true })
+MakeInteractive(hideDoneBtn,  { underline = true })
+MakeInteractive(tabGuide)      -- Reiter tragen ihre Aktiv-Linie schon selbst
+MakeInteractive(tabCurrency)
+MakeInteractive(navPrev,    { box = true })
+MakeInteractive(navNext,    { box = true })
+MakeInteractive(expandBtn,  { box = true })
+MakeInteractive(scaleMinus, { box = true })
+MakeInteractive(scalePlus,  { box = true })
+MakeInteractive(alphaMinus, { box = true })
+MakeInteractive(alphaPlus,  { box = true })
 
 -- ============================================================================
 -- F) Widget-Pools
@@ -1199,6 +1340,11 @@ function ns.Render()
 
     scaleText:SetText(string.format("|c%s%d%%|r", INK_DIM,
         math.floor((tonumber(ChrissisAddonDB.scale) or 1) * 100 + 0.5)))
+    alphaText:SetText(string.format("|c%s%d%% deckend|r", INK_DIM,
+        math.floor((tonumber(ChrissisAddonDB.alpha) or BG_A) * 100 + 0.5)))
+
+    -- Zum Schluss, damit auch die eben erzeugten Zeilen ihren Schatten haben
+    ApplyShadows(frame)
 end
 
 local refreshTimer
@@ -1242,6 +1388,7 @@ init:SetScript("OnEvent", function(self, event, arg1)
             frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         end
         ApplyScale(tonumber(ChrissisAddonDB.scale) or 1.0)
+        ApplyAlpha(tonumber(ChrissisAddonDB.alpha) or BG_A)
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
@@ -1410,6 +1557,18 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
                 math.floor((tonumber(ChrissisAddonDB.scale) or 1) * 100 + 0.5)))
         end
 
+    elseif cmd == "alpha" then
+        local v = tonumber(rest)
+        if v then
+            if v > 5 then v = v / 100 end
+            local applied = ApplyAlpha(v)
+            print(string.format("|cff33ff99Chrissi's Addon|r Deckkraft: %d%%", applied * 100))
+            if frame:IsShown() then ns.Render() end
+        else
+            print(string.format("|cff33ff99Chrissi's Addon|r Deckkraft ist %d%%. Nutzung: /chrissi alpha 35 bis 100",
+                math.floor((tonumber(ChrissisAddonDB.alpha) or BG_A) * 100 + 0.5)))
+        end
+
     elseif cmd == "zero" then
         ChrissisAddonDB.showZero = not ChrissisAddonDB.showZero
         print("|cff33ff99Chrissi's Addon|r Nullbestände: "
@@ -1420,6 +1579,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         ChrissisAddonDB.point, ChrissisAddonDB.relPoint = "CENTER", "CENTER"
         ChrissisAddonDB.x, ChrissisAddonDB.y = 0, 0
         ApplyScale(1.0)
+        ApplyAlpha(BG_A)
         frame:ClearAllPoints()
         frame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
         print("|cff33ff99Chrissi's Addon|r Position und Größe zurückgesetzt.")
@@ -1437,6 +1597,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("|cff33ff99Chrissi's Addon|r Befehle:")
         print("  |cffffd100/chrissi|r            Fenster auf/zu")
         print("  |cffffd100/chrissi scale 120|r  Größe 50 bis 150 Prozent")
+        print("  |cffffd100/chrissi alpha 70|r   Deckkraft 35 bis 100 Prozent")
         print("  |cffffd100/chrissi quellen|r    Guide-Stand und Quellen")
         print("  |cffffd100/chrissi clear|r      Alle Haken dieses Charakters löschen")
         print("  |cffffd100/chrissi zero|r       Nullbestände ein-/ausblenden")
