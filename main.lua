@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.6.0 - Logik
+    Chrissi's Addon v0.7.0 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -30,7 +30,9 @@ local addonName, ns = ...
 
 local WINDOW_WIDTH  = 420
 local WINDOW_HEIGHT = 600
-local PAD           = 14
+-- 8-Punkt-Raster nach Apple HIG: Abstaende sind Vielfache von 8. Vorher waren
+-- es 14/5/12, also drei Werte ohne gemeinsames Mass.
+local PAD           = 16
 
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.5, 1.5, 0.05
 
@@ -49,6 +51,16 @@ local PINNED_IDS = {
 -- Fallback für Währungen ohne bekannte ID. Greift nur auf englischem Client.
 local PINNED_PATTERNS = { "Coffer Key", "Voidcore" }
 
+-- Im eingeklappten Zustand bleiben nur die Gear-Crests stehen. Alles andere
+-- (Sparks, Keys, Voidcores, Accolades) ist Kontext, kein Dauerblick.
+local PINNED_CORE = {
+    [3442] = true,  -- Adventurer Mistcrest
+    [3443] = true,  -- Veteran Mistcrest
+    [3444] = true,  -- Champion Mistcrest
+    [3445] = true,  -- Hero Mistcrest
+    [3446] = true,  -- Myth Mistcrest
+}
+
 local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
 
 -- Design-Tokens ---------------------------------------------------------------
@@ -57,8 +69,9 @@ local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
 local GOLD     = "ffe8c15a"   -- Titel, wie die Questnamen im Tracker
 local INK      = "ffd6d2c8"   -- Fließtext
 local INK_DIM  = "ff8d887e"   -- Nebeninfos
-local INK_DONE = "ff7a746a"   -- erledigt. Heller als zunaechst gewaehlt:
-                              -- #5f5b54 lag bei 2,93:1 und war unlesbar.
+local INK_DONE = "ff857f74"   -- erledigt. Zweimal nachgezogen: #5f5b54 lag bei
+                              -- 2,93:1, #7a746a bei 4,27:1. Apple HIG verlangt
+                              -- 4,5:1 fuer Text. Dieser Wert liegt bei 4,98:1.
 local GREEN    = "ff0ca30c"   -- automatisch erkannt
 
 -- Flächen
@@ -66,8 +79,8 @@ local BG_R, BG_G, BG_B, BG_A = 0.035, 0.035, 0.045, 0.88
 local RULE_ALPHA = 0.10
 
 -- Rhythmus
-local ROW_GAP     = 5
-local BLOCK_GAP   = 12
+local ROW_GAP     = 8
+local BLOCK_GAP   = 16
 local LINE_H      = 20
 
 local function HexToRGB(hex)
@@ -90,7 +103,9 @@ local DEFAULTS = {
     tab = "guide",
     section = 1,        -- welche Seite des Karussells
     showZero = false,
-    hideDone = false,   -- Erledigte ausblenden
+    hideDone = false,        -- Erledigte ausblenden
+    pinnedCollapsed = false, -- Waehrungsblock auf die Gear-Crests reduzieren
+    expanded = false,        -- Fenster auf die volle Listenhoehe ziehen
 }
 
 local CHAR_DEFAULTS = { checks = {} }
@@ -202,7 +217,22 @@ local function GetPinnedCurrencies()
             end
         end
     end
-    return out
+
+    -- Eingeklappt: nur die Gear-Crests, und davon nur die mit Bestand.
+    -- Wer noch gar keine hat, sieht die Reihe trotzdem, sonst waere der Block
+    -- leer und der Zustand nicht erklaerbar.
+    if ChrissisAddonDB.pinnedCollapsed then
+        local core, withStock = {}, {}
+        for _, e in ipairs(out) do
+            if e.id and PINNED_CORE[e.id] then
+                core[#core + 1] = e
+                if e.quantity > 0 then withStock[#withStock + 1] = e end
+            end
+        end
+        return (#withStock > 0) and withStock or core, #out
+    end
+
+    return out, #out
 end
 
 -- Anzeigetext plus Fortschritt als Bruch, falls es einen Deckel gibt
@@ -401,6 +431,55 @@ local pinnedRule = frame:CreateTexture(nil, "ARTWORK")
 pinnedRule:SetHeight(1)
 pinnedRule:SetColorTexture(1, 1, 1, RULE_ALPHA)
 
+-- Tooltips ans FENSTER andocken, nicht an die Zeile. Sonst legt sich der
+-- Tooltip über den Inhalt, den er erklären soll.
+local function AnchorTooltip(owner)
+    GameTooltip:SetOwner(owner, "ANCHOR_NONE")
+    GameTooltip:ClearAllPoints()
+    GameTooltip:SetMinimumWidth(260)
+
+    -- Rechts andocken, wenn dort Platz ist, sonst links. Beide Seiten in
+    -- Bildschirmpixeln rechnen, weil das Fenster skaliert sein kann.
+    local scale = frame:GetEffectiveScale()
+    local rightEdge = (frame:GetRight() or 0) * scale
+    local screenW = (UIParent:GetWidth() or 1920) * UIParent:GetEffectiveScale()
+
+    if rightEdge + 300 * scale < screenW then
+        GameTooltip:SetPoint("TOPLEFT", frame, "TOPRIGHT", 8, 0)
+    else
+        GameTooltip:SetPoint("TOPRIGHT", frame, "TOPLEFT", -8, 0)
+    end
+end
+
+-- Währungsblock ein- und ausklappen
+local pinnedToggle = CreateFrame("Button", nil, frame)
+pinnedToggle:SetHeight(16)
+pinnedToggle.label = pinnedToggle:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+pinnedToggle.label:SetPoint("RIGHT")
+pinnedToggle:SetScript("OnClick", function()
+    ChrissisAddonDB.pinnedCollapsed = not ChrissisAddonDB.pinnedCollapsed
+    ns.Render()
+end)
+pinnedToggle:SetScript("OnEnter", function(self)
+    self.label:SetText("|c" .. GOLD .. (ChrissisAddonDB.pinnedCollapsed and "alle Währungen" or "nur Crests") .. "|r")
+    AnchorTooltip(self)
+    if ChrissisAddonDB.pinnedCollapsed then
+        GameTooltip:AddLine("Alle Währungen zeigen", 1, 1, 1)
+    else
+        GameTooltip:AddLine("Auf die Gear-Crests reduzieren", 1, 1, 1)
+        GameTooltip:AddLine("Blendet Sparks, Keys, Voidcores und Accolades aus.",
+            0.65, 0.63, 0.58, true)
+    end
+    GameTooltip:Show()
+end)
+pinnedToggle:SetScript("OnLeave", function(self)
+    -- Nur die Beschriftung zurücksetzen. Ein voller Neuaufbau bei jedem
+    -- Mausverlassen wäre Verschwendung und würde flackern.
+    self.label:SetText("|c" .. INK_DIM .. (ChrissisAddonDB.pinnedCollapsed
+        and ("alle " .. (ns.pinnedTotal or "") .. " Währungen") or "nur Crests") .. "|r")
+    GameTooltip:Hide()
+end)
+
 -- Flache Textreiter mit Unterstrich statt Blizzard-Knöpfen
 local function CreateTab(key, label)
     local b = CreateFrame("Button", nil, frame)
@@ -439,13 +518,19 @@ hideDoneBtn:SetScript("OnClick", function()
     ns.Render()
 end)
 hideDoneBtn:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+    self.label:SetText("|c" .. GOLD .. (ChrissisAddonDB.hideDone and "Erledigte ausgeblendet" or "Erledigte ausblenden") .. "|r")
+    AnchorTooltip(self)
     GameTooltip:AddLine("Erledigte Einträge ausblenden", 1, 1, 1)
     GameTooltip:AddLine("Blendet nur abgehakte Aufgaben aus. Regeln bleiben stehen.",
         0.65, 0.63, 0.58, true)
     GameTooltip:Show()
 end)
-hideDoneBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+hideDoneBtn:SetScript("OnLeave", function(self)
+    self.label:SetText(ChrissisAddonDB.hideDone
+        and ("|c" .. GOLD .. "Erledigte ausgeblendet|r")
+        or  ("|c" .. INK_DIM .. "Erledigte ausblenden|r"))
+    GameTooltip:Hide()
+end)
 
 -- Wochen-Karussell -----------------------------------------------------------
 local nav = CreateFrame("Frame", nil, frame)
@@ -559,6 +644,35 @@ scaleMinus:SetPoint("RIGHT", scalePlus, "LEFT", -2, 0)
 local scaleHint = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 scaleHint:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 9)
 scaleHint:SetText("|c" .. INK_DONE .. "Strg + Mausrad: Größe|r")
+
+-- Fenster auf die volle Listenhöhe ziehen. Mittig auf der Fußzeile, damit es
+-- nicht mit der Skalierung rechts verwechselt wird.
+local expandBtn = CreateFrame("Button", nil, frame)
+expandBtn:SetSize(28, 18)
+expandBtn:SetPoint("BOTTOM", frame, "BOTTOM", 0, 6)
+expandBtn.label = expandBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+expandBtn.label:SetPoint("CENTER")
+expandBtn:SetScript("OnClick", function()
+    ChrissisAddonDB.expanded = not ChrissisAddonDB.expanded
+    ns.Render()
+end)
+expandBtn:SetScript("OnEnter", function(self)
+    -- Farbcode im Text schlägt SetTextColor, also den Text selbst umfärben
+    self.label:SetText("|c" .. GOLD .. (ChrissisAddonDB.expanded and "-" or "+") .. "|r")
+    AnchorTooltip(self)
+    if ChrissisAddonDB.expanded then
+        GameTooltip:AddLine("Auf Standardhöhe zurück", 1, 1, 1)
+    else
+        GameTooltip:AddLine("Fenster auf die ganze Liste ziehen", 1, 1, 1)
+        GameTooltip:AddLine("Zeigt alles ohne Scrollen, maximal 90 Prozent der Bildschirmhöhe.",
+            0.65, 0.63, 0.58, true)
+    end
+    GameTooltip:Show()
+end)
+expandBtn:SetScript("OnLeave", function(self)
+    self.label:SetText("|c" .. INK_DIM .. (ChrissisAddonDB.expanded and "-" or "+") .. "|r")
+    GameTooltip:Hide()
+end)
 
 -- Mausrad: mit Strg skalieren, sonst scrollen
 scrollFrame:EnableMouseWheel(true)
@@ -701,7 +815,7 @@ end
 local CONTENT_W = WINDOW_WIDTH - 2 * PAD
 
 local function RenderPinned()
-    local entries = GetPinnedCurrencies()
+    local entries, totalCount = GetPinnedCurrencies()
     local y = 0
 
     for _, entry in ipairs(entries) do
@@ -739,7 +853,7 @@ local function RenderPinned()
     end
 
     pinned:SetHeight(math.max(y, 1))
-    return y
+    return y, #entries, totalCount or #entries
 end
 
 local function RenderCurrencyTab(width)
@@ -864,12 +978,15 @@ local function RenderGuideTab(width, section)
                 row.text:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, -2)
                 row.text:SetWidth(textWidth)
                 row.text:SetWordWrap(true)
+                -- Zeilenabstand. Apple HIG verlangt mindestens das 1,3-fache
+                -- der Schriftgröße. WoW setzt Umbrüche sonst hart auf Kante.
+                row.text:SetSpacing(3)
                 row.text:SetText(body .. suffix)
 
                 -- Tooltip trägt alles, was die Zeile nicht tragen soll:
                 -- Begründung, Quellenlage und was "[auto]" konkret prüft.
                 row:SetScript("OnEnter", function(self)
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    AnchorTooltip(self)
                     GameTooltip:AddLine(item.text, 1, 1, 1, true)
                     if item.detail then
                         GameTooltip:AddLine(" ")
@@ -902,6 +1019,25 @@ local function RenderGuideTab(width, section)
         end
     end
 
+    -- Leerzustand. Ohne ihn steht man vor einem leeren Fenster und weiß nicht,
+    -- ob etwas kaputt ist oder ob wirklich nichts mehr offen ist.
+    if y == 0 then
+        local row = Acquire("check")
+        row.box:Hide()
+        row.bar:SetColorTexture(0, 0, 0, 0)
+        row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -8)
+        row:SetWidth(width)
+        row:SetHeight(24)
+        row.text:ClearAllPoints()
+        row.text:SetPoint("TOPLEFT", row, "TOPLEFT", 12, -2)
+        row.text:SetWidth(width - 24)
+        row.text:SetWordWrap(true)
+        row.text:SetText("|c" .. INK_DIM .. (ChrissisAddonDB.hideDone
+            and "Alles erledigt. Schalter oben rechts zeigt die Liste wieder."
+            or  "Dieser Abschnitt ist leer.") .. "|r")
+        y = 40
+    end
+
     return y
 end
 
@@ -920,9 +1056,21 @@ function ns.Render()
             GOLD, equipped, INK_DIM, overall))
     end
 
-    local pinnedHeight = RenderPinned()
+    local pinnedHeight, shownCount, totalCount = RenderPinned()
 
-    local ruleY = -(70 + pinnedHeight + 8)
+    -- Schalter direkt unter den Währungen, rechtsbündig
+    local toggleY = -(70 + pinnedHeight + 2)
+    pinnedToggle:ClearAllPoints()
+    pinnedToggle:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, toggleY)
+    ns.pinnedTotal = totalCount   -- damit OnLeave die Beschriftung rekonstruieren kann
+    if ChrissisAddonDB.pinnedCollapsed then
+        pinnedToggle.label:SetText(string.format("|c%salle %d Währungen|r", INK_DIM, totalCount))
+    else
+        pinnedToggle.label:SetText("|c" .. INK_DIM .. "nur Crests|r")
+    end
+    pinnedToggle:SetWidth(pinnedToggle.label:GetStringWidth() + 4)
+
+    local ruleY = toggleY - 18
     pinnedRule:ClearAllPoints()
     pinnedRule:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, ruleY)
     pinnedRule:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, ruleY)
@@ -1034,6 +1182,20 @@ function ns.Render()
         height = RenderCurrencyTab(width)
     end
     scrollChild:SetHeight(math.max(height, 1))
+
+    -- Fensterhöhe: entweder Standard oder so hoch, dass die Liste komplett
+    -- passt. Gedeckelt auf 90 Prozent der Bildschirmhöhe, damit das Fenster
+    -- nicht oben und unten aus dem Bild läuft.
+    if ChrissisAddonDB.expanded then
+        local chrome = -contentTop + 40
+        local maxH = ((UIParent:GetHeight() or 1080) * 0.9)
+                     * (UIParent:GetEffectiveScale() / frame:GetEffectiveScale())
+        frame:SetHeight(math.min(chrome + height + 8, maxH))
+        expandBtn.label:SetText("|c" .. INK_DIM .. "-|r")
+    else
+        frame:SetHeight(WINDOW_HEIGHT)
+        expandBtn.label:SetText("|c" .. INK_DIM .. "+|r")
+    end
 
     scaleText:SetText(string.format("|c%s%d%%|r", INK_DIM,
         math.floor((tonumber(ChrissisAddonDB.scale) or 1) * 100 + 0.5)))
