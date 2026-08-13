@@ -1,0 +1,13 @@
+## Interface: 120100, 120007
+## Title: Chrissi's Addon
+## Author: Chris Cohrt
+## Version: 0.2.0
+## Notes: Gearing-Checkliste und Waehrungen fuer Midnight Season 2. Slash: /chrissi
+## IconTexture: Interface\Icons\INV_Misc_QuestionMark
+## SavedVariables: ChrissisAddonDB
+## SavedVariablesPerCharacter: ChrissisAddonCharDB
+## AddonCompartmentFunc: ChrissisAddon_OnCompartmentClick
+
+# Inhalt zuerst, Logik danach. Wer den Guide aktualisiert, fasst nur data.lua an.
+data.lua
+main.lua

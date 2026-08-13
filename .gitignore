@@ -1,0 +1,13 @@
+# Verteilbare Pakete, werden bei Bedarf neu gebaut
+*.zip
+dist/
+
+# WoW legt SavedVariables NICHT hier ab, sondern unter WTF/.
+# Falls doch mal etwas reinrutscht:
+*.bak
+*.old
+
+# Betriebssystem-Krempel
+Thumbs.db
+desktop.ini
+.DS_Store

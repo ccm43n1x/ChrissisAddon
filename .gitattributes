@@ -1,0 +1,4 @@
+# Keine automatische Zeilenenden-Umwandlung.
+# WoW liest LF und CRLF gleichermassen. Ohne diese Zeile schreibt Git die
+# Dateien beim Auschecken um und jeder Diff ist voller Scheinaenderungen.
+* -text
