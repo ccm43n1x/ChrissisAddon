@@ -1,5 +1,5 @@
 --[[
-    Chrissi's Addon v0.8.0 - Logik
+    Chrissi's Addon v0.8.1 - Logik
     ------------------------------
     Diese Datei enthält KEINEN Guide-Inhalt. Der steht in data.lua.
 
@@ -83,7 +83,10 @@ local RULE_ALPHA = 0.10
 
 -- Rhythmus
 local ROW_GAP     = 8
-local BLOCK_GAP   = 16
+-- 8 statt 16: die Blockueberschrift bringt selbst schon 22px mit, zusammen
+-- waren das rund 50px Luft zwischen zwei Bloecken. Fuer eine Liste dieser
+-- Dichte zu viel.
+local BLOCK_GAP   = 8
 local LINE_H      = 20
 
 local function HexToRGB(hex)
@@ -468,7 +471,8 @@ local ilvlLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 ilvlLabel:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD, -52)
 ilvlLabel:SetText("|c" .. INK_DIM .. "Itemlevel|r")
 
-local ilvlValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+-- Die eine Zahl, auf die alles einzahlt. Bekommt entsprechend Groesse.
+local ilvlValue = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 ilvlValue:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -PAD, -50)
 ilvlValue:SetJustifyH("RIGHT")
 
@@ -629,12 +633,12 @@ navMeterFill:SetHeight(2)
 navMeterFill:SetPoint("BOTTOMLEFT", navMeterBg, "BOTTOMLEFT", 0, 0)
 
 local navCount = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-navCount:SetPoint("BOTTOMRIGHT", navMeterBg, "TOPRIGHT", 0, 3)
+navCount:SetPoint("BOTTOMRIGHT", navMeterBg, "TOPRIGHT", -30, 3)
 
 -- Seitenanzeige. Ohne sie weiß man beim Durchschalten nicht, wo man steht
 -- und wie viel noch kommt.
 local navPage = nav:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-navPage:SetPoint("BOTTOMLEFT", navMeterBg, "TOPLEFT", 0, 3)
+navPage:SetPoint("BOTTOMLEFT", navMeterBg, "TOPLEFT", 30, 3)
 
 local function ClampSection(i)
     local n = #ns.SECTIONS
@@ -857,7 +861,9 @@ local function NewLine(parent)
     f.name = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.name:SetJustifyH("LEFT")
 
-    f.value = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    -- Wert groesser als Beschriftung. In datenlastigen Oberflaechen traegt
+    -- der Wert die Aussage, der Name ist nur die Achsenbeschriftung.
+    f.value = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.value:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, -2)
     f.value:SetJustifyH("RIGHT")
 
@@ -1121,7 +1127,10 @@ local function RenderGuideTab(width, section)
                 row.text:SetWordWrap(true)
                 -- Zeilenabstand. Apple HIG verlangt mindestens das 1,3-fache
                 -- der Schriftgröße. WoW setzt Umbrüche sonst hart auf Kante.
-                row.text:SetSpacing(3)
+                -- Faktor 1,33 (12px Schrift + 4px). HIG-Minimum ist 1,30, bei 3px
+                -- lag es mit 1,25 darunter. Zeilenlaenge betraegt gemessene
+                -- 60 Zeichen und liegt damit im Korridor 45 bis 75.
+                row.text:SetSpacing(4)
                 row.text:SetText(body .. suffix)
 
                 -- Tooltip trägt alles, was die Zeile nicht tragen soll:
