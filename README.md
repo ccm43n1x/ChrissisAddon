@@ -60,6 +60,23 @@ Werkzeuge zum Ermitteln fehlender IDs:
 
 Fenster ist mit der linken Maustaste verschiebbar. Position und Reiter überleben den Logout.
 
+## Itemlevel-Einstufung
+
+Oben steht dein angelegtes Itemlevel, eingefärbt und mit einem Gesicht dahinter:
+
+| Ab | Gesicht | Bedeutung |
+|---:|---|---|
+| 292 | `:D` | Wochenmaximum der Pre-Season erreicht (M0 gibt Champion 1/6 = 292) |
+| 286 | `:)` | gut aufgestellt, Gruppensuche für Mythic+ unproblematisch |
+| 279 | `:\|` | knapp, unter 286 wird die Gruppensuche zäh |
+| darunter | `:(` | zu niedrig, garantierte Quellen zuerst |
+
+**Wichtig: Der Durchschnitt lügt.** `GetAverageItemLevel` liefert nur den Mittelwert über alle Slots. Ein einzelnes schwaches Teil zieht ihn um rund ein Sechzehntel nach unten und fällt dadurch kaum auf, kostet bei der Gruppensuche aber trotzdem.
+
+Deshalb prüft das Add-on **jeden Slot einzeln**. Fahr mit der Maus über die Itemlevel-Zeile, dann siehst du deinen schwächsten Slot mit Namen und wie viele Slots unter dem Ziel liegen.
+
+Die Schwellen stehen in `data.lua` unter `ns.ILVL_TIERS` und lassen sich ohne Codeänderung anpassen, etwa wenn die Season weiterläuft.
+
 ## Automatische Erkennung
 
 Einträge mit `[auto]` erkennt das Add-on selbst und hakt sie ab. Der Haken lässt sich dann nicht wegklicken, weil er eine Tatsache abbildet und keine Meinung.
