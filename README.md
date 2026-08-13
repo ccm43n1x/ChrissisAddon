@@ -72,9 +72,11 @@ Der Guide-Stand steht im Fenster unter dem Titel und ist über `/chrissi quellen
 
 ## Bekannte Einschränkungen
 
-- **Die angepinnten Währungen greifen nur auf einem englischen Client.** Sie werden über den Namen erkannt (`Mistcrest`, `Spark Dust`, ...). Auf einem deutschen Client bleibt der Block leer, der Reiter „Waehrungen" funktioniert aber weiterhin. Eine sprachunabhängige Lösung über Währungs-IDs ist geplant.
-- **Eingeklappte Kategorien** im Blizzard-Währungsfenster verstecken ihre Einträge auch hier. Einmal im Charakterfenster unter Währung aufklappen.
+- **Der Reiter „Waehrungen" zeigt nur aufgeklappte Kategorien.** Eingeklappte Kategorien im Blizzard-Währungsfenster verstecken ihre Einträge auch hier. Das Add-on sagt dir, wenn welche fehlen. Einmal im Charakterfenster unter Währung aufklappen.
+  Der **angepinnte Block oben ist davon nicht betroffen**, der fragt die Währungen direkt per ID ab.
+- **Coffer Keys und Voidcores werden noch über den Namen erkannt** und erscheinen deshalb nur auf englischem Client. Alles andere im angepinnten Block läuft über IDs und ist sprachunabhängig. Wer die fehlenden IDs beisteuern will: `/chrissi scan` und die Ausgabe schicken.
 - Das Add-on liest nur aus und rechnet. Es trifft keine Entscheidungen für dich und kann nichts automatisch ausführen. Das lässt die WoW-API nicht zu.
+- Die Checkliste ist **nicht** an deinen Spielstand gekoppelt. Sie zeigt die Regeln, wendet sie aber noch nicht automatisch auf dein Itemlevel an. Das ist für eine spätere Version geplant.
 
 ## Lizenz
 

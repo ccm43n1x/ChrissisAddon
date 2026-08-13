@@ -25,16 +25,26 @@ local WINDOW_WIDTH  = 430
 local WINDOW_HEIGHT = 560
 local PAD           = 16
 
--- Welche Waehrungen oben festgepinnt werden. Treffer per Teilstring.
--- ACHTUNG: Das sind englische Namen. Auf einem deutschen Client greift die
--- Anpinnung nicht. Dauerhafte Loesung waeren Waehrungs-IDs, die sind
--- sprachunabhaengig. Dafuer einmal /chrissi scan laufen lassen.
+-- Welche Waehrungen oben festgepinnt werden.
+--
+-- IDs sind sprachunabhaengig und funktionieren auch, wenn die Kategorie im
+-- Blizzard-Waehrungsfenster eingeklappt ist. Deshalb sind sie der Hauptweg.
+-- Ermittelt ueber /chrissi scan am 13.08.2026.
+local PINNED_IDS = {
+    3442,  -- Adventurer Mistcrest
+    3443,  -- Veteran Mistcrest
+    3444,  -- Champion Mistcrest
+    3445,  -- Hero Mistcrest   (belegt: Method verlinkt currency=3445)
+    3446,  -- Myth Mistcrest   (aus der Reihe erschlossen, nicht belegt)
+    3509,  -- Tidal Spark Dust
+    3405,  -- Field Accolade
+}
+
+-- Fallback fuer Waehrungen, deren ID noch nicht bekannt ist. Greift nur auf
+-- englischem Client. Sobald die ID bekannt ist, gehoert sie nach oben.
 local PINNED_PATTERNS = {
-    "Mistcrest",
-    "Spark Dust",
     "Coffer Key",
     "Voidcore",
-    "Field Accolade",
 }
 
 local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
@@ -160,17 +170,51 @@ local function GetCurrencies()
     return list, collapsedHeaders
 end
 
--- Die angepinnten Waehrungen, in der Reihenfolge von PINNED_PATTERNS
+-- Eine einzelne Waehrung direkt per ID abfragen.
+-- Vorteil gegenueber der Listen-Methode: funktioniert auch bei eingeklappter
+-- Kategorie und ist sprachunabhaengig.
+local function GetCurrencyByID(id)
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyInfo then return nil end
+    local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, id)
+    if not ok or not info or not info.name or info.name == "" then return nil end
+    return {
+        isHeader       = false,
+        id             = id,
+        name           = info.name,
+        quantity       = tonumber(info.quantity) or 0,
+        icon           = info.iconFileID,
+        maxQuantity    = tonumber(info.maxQuantity) or 0,
+        earnedThisWeek = tonumber(info.quantityEarnedThisWeek) or 0,
+        maxWeekly      = tonumber(info.maxWeeklyQuantity) or 0,
+        canEarnPerWeek = info.canEarnPerWeek and true or false,
+    }
+end
+
+-- Die angepinnten Waehrungen: erst die bekannten IDs, danach der Namens-Fallback
 local function GetPinnedCurrencies()
-    local all = GetCurrencies()
-    local out = {}
-    for _, pattern in ipairs(PINNED_PATTERNS) do
-        for _, entry in ipairs(all) do
-            if not entry.isHeader and entry.name:find(pattern, 1, true) then
-                out[#out + 1] = entry
+    local out, seen = {}, {}
+
+    for _, id in ipairs(PINNED_IDS) do
+        local entry = GetCurrencyByID(id)
+        if entry then
+            out[#out + 1] = entry
+            seen[id] = true
+        end
+    end
+
+    if #PINNED_PATTERNS > 0 then
+        local all = GetCurrencies()
+        for _, pattern in ipairs(PINNED_PATTERNS) do
+            for _, entry in ipairs(all) do
+                if not entry.isHeader and not (entry.id and seen[entry.id])
+                   and entry.name:find(pattern, 1, true) then
+                    out[#out + 1] = entry
+                    if entry.id then seen[entry.id] = true end
+                end
             end
         end
     end
+
     return out
 end
 
@@ -304,7 +348,11 @@ local function NewHeader(parent)
     f.text = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     f.text:SetPoint("LEFT", f, "LEFT", 0, 0)
     f.text:SetJustifyH("LEFT")
-    f:SetHighlightTexture("Interface\\Buttons\\UI-Listbox-Highlight", "ADD")
+    -- Dezente Hervorhebung. Die Listbox-Textur mit Blendmodus ADD war ein
+    -- greller goldener Balken ueber die volle Breite.
+    f:SetHighlightTexture("Interface\\Buttons\\WHITE8X8", "ADD")
+    local hl = f:GetHighlightTexture()
+    if hl then hl:SetVertexColor(1, 1, 1, 0.07) end
     return f
 end
 
@@ -419,6 +467,7 @@ local function RenderCurrencyTab(width)
             row:SetWidth(width)
             row.text:SetText("|cffffd100" .. entry.name .. "|r")
             row:SetScript("OnClick", nil)
+            row:EnableMouse(false)   -- nicht anklickbar, also auch nicht hervorheben
             y = y + 22
         elseif entry.quantity > 0 or ChrissisAddonDB.showZero then
             local row = Acquire("line")
@@ -466,6 +515,7 @@ local function RenderGuideTab(width)
         head:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 0, -y)
         head:SetWidth(width)
         head.text:SetText(string.format("|cffffd100%s %s|r%s", arrow, section.title, counter))
+        head:EnableMouse(true)   -- anklickbar zum Auf- und Zuklappen
         head:SetScript("OnClick", function()
             ChrissisAddonDB.collapsed[section.id] = not collapsed or nil
             ns.Render()
@@ -489,6 +539,7 @@ local function RenderGuideTab(width)
                             sub:SetWidth(width - 10)
                             sub.text:SetText("|c" .. block.color .. block.label .. "|r")
                             sub:SetScript("OnClick", nil)
+                            sub:EnableMouse(false)   -- reine Ueberschrift
                             y = y + 20
                         end
 
@@ -563,9 +614,11 @@ function ns.Render()
     tabCurrency:ClearAllPoints()
     tabCurrency:SetPoint("LEFT", tabGuide, "RIGHT", 6, 0)
 
+    -- Aktiven Reiter markieren statt den inaktiven auszugrauen. Mit SetEnabled
+    -- sah der AKTIVE Reiter grau und der inaktive aktiv aus, also genau falsch.
     local isGuide = (ChrissisAddonDB.tab ~= "currency")
-    tabGuide:SetEnabled(not isGuide)
-    tabCurrency:SetEnabled(isGuide)
+    tabGuide:SetText(isGuide and "|cffffd100> Checkliste|r" or "Checkliste")
+    tabCurrency:SetText(isGuide and "Waehrungen" or "|cffffd100> Waehrungen|r")
 
     scrollFrame:ClearAllPoints()
     scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", PAD + 2, tabsY - 28)
@@ -649,7 +702,9 @@ local function PrintCurrencyScan()
     print("|cff33ff99Chrissi's Addon|r Waehrungs-Scan:")
     local count = 0
     for _, e in ipairs(list) do
-        if not e.isHeader and (e.quantity > 0 or ChrissisAddonDB.showZero) then
+        -- Der Scan zeigt IMMER alles, auch Nullbestaende. Zweck ist das
+        -- Ermitteln von IDs, und dabei sind gerade die noch leeren wichtig.
+        if not e.isHeader then
             count = count + 1
             print(string.format("  ID |cffffd100%s|r  %s  = %s",
                 tostring(e.id or "?"), e.name, FormatNumber(e.quantity)))
