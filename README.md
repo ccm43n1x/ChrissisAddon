@@ -22,13 +22,38 @@ Wichtig: Der Ordner muss exakt `ChrissisAddon` heißen, sonst lädt WoW ihn nich
 |---|---|
 | `/chrissi` | Fenster auf/zu |
 | `/chrissi quellen` | Guide-Stand und Quellenliste |
-| `/chrissi scan` | Alle Währungs-IDs ins Chatfenster |
 | `/chrissi clear` | Alle Haken dieses Charakters löschen |
 | `/chrissi zero` | Nullbestände ein-/ausblenden |
 | `/chrissi reset` | Fensterposition zurücksetzen |
 | `/chrissi help` | Befehlsübersicht |
 
+Werkzeuge zum Ermitteln fehlender IDs:
+
+| Befehl | Wirkung |
+|---|---|
+| `/chrissi scan` | Alle Währungs-IDs |
+| `/chrissi questdiff` | Neue Quest-IDs. Einmal vor der Quest aufrufen, einmal danach |
+| `/chrissi factions` | Fraktions-IDs und Renown-Stand |
+| `/chrissi vault` | Great-Vault-Rohdaten |
+
 Fenster ist mit der linken Maustaste verschiebbar. Position und Reiter überleben den Logout.
+
+## Automatische Erkennung
+
+Einträge mit `[auto]` erkennt das Add-on selbst und hakt sie ab. Der Haken lässt sich dann nicht wegklicken, weil er eine Tatsache abbildet und keine Meinung.
+
+Erkannt wird über:
+
+| Typ | Womit |
+|---|---|
+| Quests | `C_QuestLog.IsQuestFlaggedCompleted(id)` |
+| Währungen | `C_CurrencyInfo.GetCurrencyInfo(id)` |
+| Renown | `C_MajorFactions.GetMajorFactionData(id)` |
+| Great Vault | `C_WeeklyRewards.GetActivities()` |
+
+Alles ohne `[auto]` hakst du selbst ab. **Die Automatik entfernt niemals einen Haken, den du selbst gesetzt hast.**
+
+Eine neue Bedingungsart hinzufügen heißt: eine Funktion in die `CHECKERS`-Tabelle in `main.lua` legen. Am Rest ändert sich nichts.
 
 ## Wie die Haken funktionieren
 

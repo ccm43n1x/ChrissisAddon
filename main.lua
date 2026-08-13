@@ -230,6 +230,103 @@ local function FormatCurrencyValue(entry)
 end
 
 -- ============================================================================
+-- C2) Automatische Erkennung
+-- ============================================================================
+
+-- Registry nach dem Vorbild von RestedXP (dort addon.functions.*): eine neue
+-- Bedingungsart hinzuzufuegen heisst, eine Funktion in diese Tabelle zu legen.
+-- Am Parser und am Rendering aendert sich dabei nichts.
+
+-- Pro Render-Durchlauf einmal gefuellt, damit teure Abfragen nicht pro Zeile
+-- laufen. Wird zu Beginn von ns.Render() geleert.
+local renderCache = {}
+
+local function VaultTypeFor(row)
+    local E = Enum and Enum.WeeklyRewardChestThresholdType
+    if row == "raid"  then return (E and E.Raid) or 3 end
+    if row == "mplus" then return (E and E.Activities) or 1 end
+    if row == "world" then return (E and (E.World or E.Delves)) or 6 end
+    return nil
+end
+
+local function GetVaultActivities()
+    if renderCache.vault then return renderCache.vault end
+    local acts = {}
+    if C_WeeklyRewards and C_WeeklyRewards.GetActivities then
+        local ok, a = pcall(C_WeeklyRewards.GetActivities)
+        if ok and type(a) == "table" then acts = a end
+    end
+    renderCache.vault = acts
+    return acts
+end
+
+local CHECKERS = {
+    quest = function(spec)
+        if not (C_QuestLog and C_QuestLog.IsQuestFlaggedCompleted and spec.id) then return false end
+        local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, spec.id)
+        return (ok and done) and true or false
+    end,
+
+    questAny = function(spec)
+        if type(spec.ids) ~= "table" then return false end
+        for _, id in ipairs(spec.ids) do
+            local ok, done = pcall(C_QuestLog.IsQuestFlaggedCompleted, id)
+            if ok and done then return true end
+        end
+        return false
+    end,
+
+    currency = function(spec)
+        local info = GetCurrencyByID(spec.id)
+        return (info and info.quantity >= (tonumber(spec.min) or 1)) and true or false
+    end,
+
+    renown = function(spec)
+        if not (C_MajorFactions and C_MajorFactions.GetMajorFactionData) then return false end
+        local ok, data = pcall(C_MajorFactions.GetMajorFactionData, spec.faction)
+        if not ok or type(data) ~= "table" then return false end
+        return (tonumber(data.renownLevel) or 0) >= (tonumber(spec.level) or 1)
+    end,
+
+    vault = function(spec)
+        local want = VaultTypeFor(spec.row)
+        if not want then return false end
+        local best = 0
+        for _, a in ipairs(GetVaultActivities()) do
+            if a.type == want then
+                -- Blizzard hat das Rueckgabeformat mehrfach geaendert, deshalb
+                -- defensiv auslesen statt auf ein einzelnes Feld zu vertrauen.
+                local p = a.progress
+                if type(p) == "table" then p = p.progress or p.current or p.value end
+                p = tonumber(p) or 0
+                if p > best then best = p end
+            end
+        end
+        return best >= (tonumber(spec.need) or 1)
+    end,
+}
+
+-- Liefert zwei Werte: istAbgehakt, wurdeAutomatischErkannt
+--
+-- Reihenfolge ist Absicht: Ein von Hand gesetzter Haken gewinnt immer. Die
+-- Automatik darf nur zusaetzlich abhaken, niemals etwas wieder entfernen.
+local function GetItemState(item)
+    local checks = ChrissisAddonCharDB and ChrissisAddonCharDB.checks
+    if checks and checks[item.id] then return true, false end
+
+    local spec = item.check
+    if spec then
+        local fn = CHECKERS[spec.type]
+        if fn then
+            local ok, result = pcall(fn, spec)
+            if ok and result then return true, true end
+        end
+    end
+
+    return false, false
+end
+
+-- ============================================================================
 -- D) Frames
 -- ============================================================================
 
@@ -391,7 +488,10 @@ local function ReleaseAll()
             rec.frame.name:ClearAllPoints()
         end
 
-        if rec.frame.box then rec.frame.box:SetScript("OnClick", nil) end
+        if rec.frame.box then
+            rec.frame.box:SetScript("OnClick", nil)
+            rec.frame.box:SetEnabled(true)   -- automatisch erkannte Zeilen deaktivieren ihn
+        end
         if rec.kind == "header" then rec.frame:SetScript("OnClick", nil) end
 
         active[i] = nil
@@ -502,7 +602,7 @@ local function RenderGuideTab(width)
         for _, item in ipairs(section.items) do
             if item.kind == "task" then
                 total = total + 1
-                if IsChecked(item.id) then done = done + 1 end
+                if (GetItemState(item)) then done = done + 1 end
             end
         end
 
@@ -547,14 +647,24 @@ local function RenderGuideTab(width)
                         row:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 14, -y)
                         row:SetWidth(width - 14)
 
+                        local checked, isAuto = GetItemState(item)
+
                         local textLeft, textWidth
                         if item.kind == "task" then
                             row.box:Show()
-                            row.box:SetChecked(IsChecked(item.id))
-                            row.box:SetScript("OnClick", function(self)
-                                SetChecked(item.id, self:GetChecked())
-                                ns.Render()
-                            end)
+                            row.box:SetChecked(checked)
+                            if isAuto then
+                                -- Automatisch erkannt: der Haken bildet eine
+                                -- Tatsache ab, also nicht wegklickbar.
+                                row.box:SetEnabled(false)
+                                row.box:SetScript("OnClick", nil)
+                            else
+                                row.box:SetEnabled(true)
+                                row.box:SetScript("OnClick", function(self)
+                                    SetChecked(item.id, self:GetChecked())
+                                    ns.Render()
+                                end)
+                            end
                             textLeft, textWidth = 24, width - 42
                         else
                             row.box:Hide()
@@ -565,10 +675,15 @@ local function RenderGuideTab(width)
                         if item.proof == "single" then
                             body = body .. "  |cff808080[1 Quelle]|r"
                         end
-                        if item.kind == "task" and IsChecked(item.id) then
+                        if item.kind == "task" and checked then
                             body = "|cff808080" .. body .. "|r"
                         elseif item.kind == "rule" then
                             body = "|c" .. block.color .. body .. "|r"
+                        end
+                        -- Marker ausserhalb der Einfaerbung, sonst frisst der
+                        -- Reset-Code |r die Graufaerbung dahinter auf.
+                        if isAuto then
+                            body = body .. "  |cff40ff40[auto]|r"
                         end
 
                         row.text:ClearAllPoints()
@@ -592,6 +707,7 @@ end
 
 function ns.Render()
     ReleaseAll()
+    wipe(renderCache)   -- teure Abfragen einmal pro Durchlauf, nicht pro Zeile
 
     -- Untertitel mit Guide-Stand. Billiges, wirksames Vertrauenssignal.
     subTitle:SetText(string.format("Guide %s, Stand %s  |  %s",
@@ -670,6 +786,11 @@ init:RegisterEvent("PLAYER_ENTERING_WORLD")
 init:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
 init:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
 init:RegisterEvent("PLAYER_AVG_ITEM_LEVEL_UPDATE")
+-- Ausloeser fuer die automatische Erkennung
+init:RegisterEvent("QUEST_TURNED_IN")
+init:RegisterEvent("QUEST_LOG_UPDATE")
+init:RegisterEvent("MAJOR_FACTION_RENOWN_LEVEL_CHANGED")
+init:RegisterEvent("WEEKLY_REWARDS_UPDATE")
 
 init:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -718,6 +839,103 @@ local function PrintCurrencyScan()
     end
 end
 
+-- Quest-IDs selbst finden: einmal vor der Quest merken, einmal danach
+-- vergleichen. Genau der Weg, mit dem sich fehlende IDs im Vorbeigehen
+-- einsammeln lassen, ohne Wowhead zu durchsuchen.
+local questSnapshot
+
+local function TakeQuestSnapshot()
+    local set, count = {}, 0
+    if C_QuestLog and C_QuestLog.GetAllCompletedQuestIDs then
+        local ok, list = pcall(C_QuestLog.GetAllCompletedQuestIDs)
+        if ok and type(list) == "table" then
+            for _, id in ipairs(list) do
+                set[id] = true
+                count = count + 1
+            end
+        end
+    end
+    return set, count
+end
+
+local function PrintQuestDiff()
+    local now, count = TakeQuestSnapshot()
+
+    if count == 0 then
+        print("|cff33ff99Chrissi's Addon|r Quest-Liste nicht verfuegbar.")
+        return
+    end
+
+    if not questSnapshot then
+        questSnapshot = now
+        print(string.format(
+            "|cff33ff99Chrissi's Addon|r %d abgeschlossene Quests gemerkt. Quest erledigen, dann |cffffd100/chrissi questdiff|r erneut.",
+            count))
+        return
+    end
+
+    local new = {}
+    for id in pairs(now) do
+        if not questSnapshot[id] then new[#new + 1] = id end
+    end
+    table.sort(new)
+
+    if #new == 0 then
+        print("|cff33ff99Chrissi's Addon|r Keine neue Quest seit dem Merken.")
+    else
+        print(string.format("|cff33ff99Chrissi's Addon|r %d neue Quest-ID(n):", #new))
+        for _, id in ipairs(new) do
+            local titleOk, titleText
+            if C_QuestLog.GetTitleForQuestID then
+                titleOk, titleText = pcall(C_QuestLog.GetTitleForQuestID, id)
+            end
+            print(string.format("  |cffffd100%d|r  %s", id,
+                (titleOk and titleText) or "(Name noch nicht geladen)"))
+        end
+    end
+
+    questSnapshot = now
+end
+
+local function PrintFactions()
+    if not (C_MajorFactions and C_MajorFactions.GetMajorFactionIDs) then
+        print("|cff33ff99Chrissi's Addon|r Fraktions-API nicht verfuegbar.")
+        return
+    end
+    local ok, ids = pcall(C_MajorFactions.GetMajorFactionIDs)
+    if not ok or type(ids) ~= "table" then
+        print("|cff33ff99Chrissi's Addon|r Keine Fraktionsdaten.")
+        return
+    end
+    print("|cff33ff99Chrissi's Addon|r Major Factions:")
+    for _, id in ipairs(ids) do
+        local ok2, d = pcall(C_MajorFactions.GetMajorFactionData, id)
+        if ok2 and type(d) == "table" then
+            print(string.format("  ID |cffffd100%d|r  %s  (Renown %s)",
+                id, d.name or "?", tostring(d.renownLevel or 0)))
+        end
+    end
+end
+
+local function PrintVault()
+    wipe(renderCache)
+    local acts = GetVaultActivities()
+    print("|cff33ff99Chrissi's Addon|r Great Vault, Rohdaten:")
+    if #acts == 0 then
+        print("  Keine Aktivitaeten. Vault oeffnet sich erst mit der Season.")
+        return
+    end
+    for i, a in ipairs(acts) do
+        local p = a.progress
+        if type(p) == "table" then p = p.progress or p.current or p.value end
+        print(string.format("  [%d] type=%s  progress=%s  threshold=%s  level=%s",
+            i, tostring(a.type), tostring(p), tostring(a.threshold), tostring(a.level)))
+    end
+    print("  Erwartet: raid=" .. tostring(VaultTypeFor("raid"))
+        .. ", mplus=" .. tostring(VaultTypeFor("mplus"))
+        .. ", world=" .. tostring(VaultTypeFor("world")))
+end
+
 SLASH_CHRISSISADDON1 = "/chrissi"
 SLASH_CHRISSISADDON2 = "/chrissisaddon"
 
@@ -726,6 +944,15 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
 
     if msg == "scan" then
         PrintCurrencyScan()
+
+    elseif msg == "questdiff" then
+        PrintQuestDiff()
+
+    elseif msg == "factions" then
+        PrintFactions()
+
+    elseif msg == "vault" then
+        PrintVault()
 
     elseif msg == "zero" then
         ChrissisAddonDB.showZero = not ChrissisAddonDB.showZero
@@ -752,12 +979,16 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
 
     elseif msg == "help" then
         print("|cff33ff99Chrissi's Addon|r Befehle:")
-        print("  |cffffd100/chrissi|r          Fenster auf/zu")
-        print("  |cffffd100/chrissi scan|r     Waehrungs-IDs ins Chatfenster")
-        print("  |cffffd100/chrissi quellen|r  Guide-Stand und Quellen")
-        print("  |cffffd100/chrissi clear|r    Alle Haken dieses Charakters loeschen")
-        print("  |cffffd100/chrissi zero|r     Nullbestaende ein-/ausblenden")
-        print("  |cffffd100/chrissi reset|r    Fensterposition zuruecksetzen")
+        print("  |cffffd100/chrissi|r           Fenster auf/zu")
+        print("  |cffffd100/chrissi quellen|r   Guide-Stand und Quellen")
+        print("  |cffffd100/chrissi clear|r     Alle Haken dieses Charakters loeschen")
+        print("  |cffffd100/chrissi zero|r      Nullbestaende ein-/ausblenden")
+        print("  |cffffd100/chrissi reset|r     Fensterposition zuruecksetzen")
+        print("|cff808080  Werkzeuge zum Ermitteln fehlender IDs:|r")
+        print("  |cffffd100/chrissi scan|r      Alle Waehrungs-IDs")
+        print("  |cffffd100/chrissi questdiff|r Neue Quest-IDs (vorher und nachher aufrufen)")
+        print("  |cffffd100/chrissi factions|r  Fraktions-IDs und Renown-Stand")
+        print("  |cffffd100/chrissi vault|r     Great-Vault-Rohdaten")
 
     else
         ToggleWindow()

@@ -20,7 +20,23 @@
                              -- P3 = nur wenn Zeit, NO = nicht tun
         proof = "ok",        -- "ok"     = mehrfach belegt (Blizzard/Method/Wowhead/Icy Veins)
                              -- "single" = nur eine Quelle, ungeprueft
+        check = { ... },     -- OPTIONAL: automatische Erkennung, siehe unten
       }
+
+    Automatische Erkennung (Feld "check"):
+      { type = "quest",    id = 92600 }                  Quest abgeschlossen?
+      { type = "questAny", ids = { 1, 2, 3 } }           irgendeine davon?
+      { type = "currency", id = 3444, min = 100 }        Bestand erreicht?
+      { type = "renown",   faction = 2600, level = 7 }   Renown-Stufe erreicht?
+      { type = "vault",    row = "world", need = 8 }     Vault-Fortschritt?
+
+    Eintraege OHNE "check" bleiben von Hand abhakbar. Eintraege MIT "check"
+    haken sich selbst ab und sind im Fenster als [auto] markiert. Die
+    Automatik entfernt niemals einen Haken, den man selbst gesetzt hat.
+
+    Fehlende Quest-IDs findet man im Spiel mit /chrissi questdiff:
+    einmal vor und einmal nach der Quest aufrufen, das Add-on nennt die
+    Differenz. Fraktions-IDs liefert /chrissi factions.
 
     Wiederkehrende Aufgaben bekommen ueber alle Wochen DIESELBE ID.
     Beispiel: die woechentliche Spark-Quest ist immer "70348198".
@@ -103,7 +119,12 @@ ns.SECTIONS = {
               text = "Delves bis Tier 11 pushen. Am Ende eines T11 faellt der Cracked Keystone." },
 
             { id = "w0_cracked", kind = "task", block = "P1", proof = "ok",
+              check = { type = "quest", id = 92600 },
               text = "Cracked Keystone abschliessen: irgendeinen Dungeon auf Mythic 2 oder hoeher. Gibt 20 Hero + 20 Myth Mistcrest, UNBEGRENZT. Achtung: die Quest gibt einen M+-Keystone. Inventar-voll-Trick vorher machen." },
+
+            { id = "70348198", kind = "task", block = "P1", proof = "ok",
+              check = { type = "quest", id = 96446 },
+              text = "Woechentliche Spark-Quest (Spark of Tides) bei Eldara Dawnrunner in Silvermoon abschliessen." },
 
             { id = "w0_atalutek_map", kind = "task", block = "P1", proof = "ok",
               text = "Vaults of Atal'Utek Wochenquest fuer die Trovehunter's Bounty Map." },
@@ -115,12 +136,14 @@ ns.SECTIONS = {
               text = "Freigeschaltetes, nicht abgeholtes Champion-Renown-Gear abholen, wenn der Slot unter 292 liegt. Silvermoon Court 9 Helm, Amani Tribe 9 Hals, Hara'ti 8 Guertel, The Singularity 7 Schmuckstueck, Zul'jarra's Forces 9 Armschienen." },
 
             { id = "w0_crucible", kind = "task", block = "P1", proof = "ok",
+              check = { type = "quest", id = 93933 },
               text = "Renown 7 bei The Singularity: Quest Guarded Treasures bei Void Researcher Anomander (52.5, 72.9) holen, vorher Stormarion Assault in Voidstorm abschliessen. Gibt den Crucible of Erratic Energies. Gilt als Pre-Season-BiS-Trinket, weil die Void-Research-Faehigkeiten damit UEBERALL proccen. Vorher simmen." },
 
             { id = "w0_weeklies", kind = "task", block = "P1", proof = "ok",
               text = "Silvermoon- und Coiled-Isle-Wochenquests: ein Spark, Keys und Fragmente, Caches, Ruf." },
 
             { id = "w0_world8", kind = "task", block = "P1", proof = "ok",
+              check = { type = "vault", row = "world", need = 8 },
               text = "Acht World-Aktivitaeten, idealerweise Delves Tier 6+. Gibt drei World-Vault-Felder. Erste Vault-Reihe maximal Champion 3/6 = 298." },
 
             { id = "w0_vault3", kind = "task", block = "P1", proof = "single",
@@ -152,9 +175,11 @@ ns.SECTIONS = {
               text = "Azta'rec auf Stufe ?? legen. 30 unbegrenzte Hero Mistcrest, oder 60 falls Stufe ? nicht gemacht, plus 30 unbegrenzte Myth Mistcrest." },
 
             { id = "70348198", kind = "task", block = "P1", proof = "ok",
-              text = "Woechentliche Spark-Quest abschliessen." },
+              check = { type = "quest", id = 96446 },
+              text = "Woechentliche Spark-Quest (Spark of Tides) abschliessen." },
 
             { id = "w1_cracked", kind = "task", block = "P1", proof = "ok",
+              check = { type = "quest", id = 92600 },
               text = "Cracked Keystone erneut: T11-Delve, dann M2+. Wieder 20 Hero + 20 Myth unbegrenzt." },
 
             { id = "w1_bountiful", kind = "task", block = "P1", proof = "ok",
@@ -195,7 +220,8 @@ ns.SECTIONS = {
               text = "Bonus Roll springt auf die erste Stufe des NAECHSTHOEHEREN Tracks. Heroic gibt ein Myth-Track-Teil, Mythic gibt ein voll aufgewertetes. Weil M+ Voidcores zum selben Preis erzeugt, finanziert eine starke M+-Woche einen spaeteren Raid-Roll." },
 
             { id = "70348198_w2", kind = "task", block = "P1", proof = "ok",
-              text = "Woechentliche Spark-Quest abschliessen." },
+              check = { type = "quest", id = 96446 },
+              text = "Woechentliche Spark-Quest (Spark of Tides) abschliessen." },
 
             { id = "w2_upgrade", kind = "task", block = "P2", proof = "ok",
               text = "Jetzt gezielt aufwerten. Vorher den Crest-Tauschtrick pruefen, spart 20 Crests pro Stufe bei Hero und Myth." },
