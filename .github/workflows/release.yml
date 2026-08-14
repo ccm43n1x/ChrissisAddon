@@ -1,0 +1,20 @@
+name: Package and release
+
+on:
+  push:
+    tags:
+      - '**'          # jeder gepushte Tag loest einen Release aus
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}   # von GitHub automatisch gestellt
+    steps:
+      - name: Clone project
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # volle Historie, damit der Changelog stimmt
+      - name: Package and release
+        uses: BigWigsMods/packager@v2

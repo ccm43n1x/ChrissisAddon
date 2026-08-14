@@ -1,0 +1,16 @@
+# Steuerdatei fuer den BigWigs Packager.
+#
+# Warum es diese Datei gibt, obwohl ein Ein-Ordner-Addon ohne Libraries
+# normalerweise ohne sie auskommt:
+# Der Packager benennt den Ordner im Zip standardmaessig nach dem Repo-Namen.
+# WoW laedt ein Addon aber nur, wenn der Ordnername exakt dem Namen der
+# .toc-Datei entspricht (ChrissisAddon.toc -> Ordner ChrissisAddon).
+# Heisst das GitHub-Repo also irgendwann anders (chrissis-addon, ChrissisAddon-wow),
+# waere das ausgelieferte Zip kaputt. package-as nagelt den Ordnernamen fest.
+package-as: ChrissisAddon
+
+# Nicht mit ausliefern: Entwicklungs-Krempel, der im Spiel nichts verloren hat.
+ignore:
+  - .github
+  - .gitattributes
+  - .gitignore
