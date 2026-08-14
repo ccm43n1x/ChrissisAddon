@@ -151,6 +151,8 @@ local DEFAULTS = {
     expanded = false,        -- Fenster auf die volle Listenhoehe ziehen
     alpha = 0.95,            -- Deckkraft der Flaeche
     accent = ACCENT_DEFAULT, -- Akzentfarbe, seit v1.1.0 frei waehlbar
+    minimapAngle = 200,      -- Position des Minimap-Knopfes als Winkel
+    hideMinimap = false,
     questSnapshot = false,   -- gemerkte Questliste fuer /chrissi questdiff
     questWatch = false,      -- jede abgegebene Quest ins Chatfenster melden
 }
@@ -1677,6 +1679,8 @@ init:SetScript("OnEvent", function(self, event, arg1)
         -- ApplyDefaults hat GOLD zwar schon gesetzt, aber der Titel wurde
         -- vorher gefaerbt und traegt sonst weiter das Standard-Gold.
         if RefreshAccent then RefreshAccent() end
+        -- Minimap-Knopf. Laedt nach main.lua, deshalb hier und nicht frueher.
+        if ns.Minimap then ns.Minimap:Init() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
@@ -1934,6 +1938,12 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
             print("|cff33ff99Chrissi's Addon|r Nutzung: |cffffd100/chrissi accent|r für den Farbwähler, |cffffd100/chrissi accent e8c15a|r für einen Hex-Wert, |cffffd100/chrissi accent reset|r für den Standard.")
         end
 
+    elseif cmd == "minimap" then
+        if ns.Minimap then
+            local shown = ns.Minimap:Toggle()
+            print("|cff33ff99Chrissi's Addon|r Minimap-Knopf: " .. (shown and "an" or "aus"))
+        end
+
     elseif cmd == "factions" then
         PrintFactions()
 
@@ -1994,6 +2004,7 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("  |cffffd100/chrissi scale 120|r  Größe 50 bis 150 Prozent")
         print("  |cffffd100/chrissi alpha 70|r   Deckkraft 60 bis 100 Prozent")
         print("  |cffffd100/chrissi accent|r     Akzentfarbe wählen (oder: accent e8c15a / accent reset)")
+        print("  |cffffd100/chrissi minimap|r    Minimap-Knopf ein-/ausblenden")
         print("  |cffffd100/chrissi quellen|r    Guide-Stand und Quellen")
         print("  |cffffd100/chrissi clear|r      Alle Haken dieses Charakters löschen")
         print("  |cffffd100/chrissi zero|r       Nullbestände ein-/ausblenden")

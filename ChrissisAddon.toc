@@ -12,3 +12,4 @@
 # Inhalt zuerst, Logik danach. Wer den Guide aktualisiert, fasst nur data.lua an.
 data.lua
 main.lua
+minimap.lua
