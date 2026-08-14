@@ -14,3 +14,4 @@ ignore:
   - .github
   - .gitattributes
   - .gitignore
+  - DESCRIPTION-curseforge.md
