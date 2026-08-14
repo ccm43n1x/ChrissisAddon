@@ -1,7 +1,7 @@
 ## Interface: 120100, 120007
 ## Title: Chrissi's Addon
 ## Author: Chris Cohrt
-## Version: 1.1.0
+## Version: 1.1.1
 ## Notes: Gearing-Checkliste und Währungen für Midnight Season 2. Slash: /chrissi
 ## IconTexture: Interface\Icons\INV_Misc_QuestionMark
 ## SavedVariables: ChrissisAddonDB
