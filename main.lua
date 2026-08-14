@@ -37,7 +37,11 @@ local PAD           = 16
 local SCALE_MIN, SCALE_MAX, SCALE_STEP = 0.5, 1.5, 0.05
 -- Untergrenze bewusst bei 0,35: darunter wird Text auch mit Schatten
 -- unlesbar, egal wie hell die Schrift ist.
-local ALPHA_MIN, ALPHA_MAX, ALPHA_STEP = 0.35, 1.0, 0.05
+-- Untergrenze v1.1.0 von 0.35 auf 0.60 angehoben. Unterhalb davon bestimmt die
+-- Spielwelt die Flächenfarbe und das Fenster wird fleckig, egal welcher
+-- Grundton eingestellt ist. Wer wirklich durchschauen will, blendet das
+-- Fenster besser ganz aus.
+local ALPHA_MIN, ALPHA_MAX, ALPHA_STEP = 0.60, 1.0, 0.05
 
 -- Angepinnte Währungen. IDs sind sprachunabhängig und funktionieren auch bei
 -- eingeklappter Kategorie. Ermittelt über /chrissi scan am 13.08.2026.
@@ -69,7 +73,13 @@ local BLOCK_ORDER = { "P1", "P2", "P3", "NO" }
 -- Design-Tokens ---------------------------------------------------------------
 -- Grundregel: Text trägt Textfarben, niemals die Kategoriefarbe. Die
 -- Zugehörigkeit übernimmt ein Streifen NEBEN dem Text.
-local GOLD     = "ffe8c15a"   -- Titel, wie die Questnamen im Tracker
+-- Akzentfarbe. Seit v1.1.0 einstellbar, Standard bleibt das Gold der
+-- Questnamen im Blizzard-Tracker. GOLD ist deshalb KEINE Konstante mehr,
+-- sondern wird beim Laden aus den SavedVariables gesetzt und von
+-- ApplyAccent() zur Laufzeit ausgetauscht. Wer den Wert liest, muss das zur
+-- Render-Zeit tun, nicht einmalig beim Erstellen eines Frames.
+local ACCENT_DEFAULT = "ffe8c15a"
+local GOLD     = ACCENT_DEFAULT
 local INK      = "ffd6d2c8"   -- Fließtext
 local INK_DIM  = "ff8d887e"   -- Nebeninfos
 local INK_DONE = "ff857f74"   -- erledigt. Zweimal nachgezogen: #5f5b54 lag bei
@@ -77,17 +87,44 @@ local INK_DONE = "ff857f74"   -- erledigt. Zweimal nachgezogen: #5f5b54 lag bei
                               -- 4,5:1 fuer Text. Dieser Wert liegt bei 4,98:1.
 local GREEN    = "ff0ca30c"   -- automatisch erkannt
 
--- Flächen
-local BG_R, BG_G, BG_B, BG_A = 0.035, 0.035, 0.045, 0.88
+-- Flächen ---------------------------------------------------------------------
+-- v1.1.0, nach dem Vergleich mit EllesmereUI im Screenshot vom 14.08.2026:
+-- Die alte Fläche war mit 0.035/0.035/0.045 nahezu schwarz. Bei 88 Prozent
+-- Deckkraft mischt die Spielwelt aber kräftig mit, und weil eine fast schwarze
+-- Fläche kaum Eigenfarbe hat, GEWINNT die Welt diese Mischung: vor Eversong
+-- Woods wurde das Fenster sichtbar braun, in Nachtzonen blau. Ein Fenster, das
+-- seine Farbe je nach Standort wechselt, liest sich als billig.
+--
+-- Zwei Korrekturen: Grundton deutlich angehoben, damit er die Mischung
+-- dominiert statt sie zu erleiden. Und die Untergrenze der Deckkraft hoch,
+-- weil unterhalb davon jeder Grundton verliert.
+--
+-- Die Werte sind an EllesmereUI abgelesen (dessen Optionsfenster nutzt
+-- 0.06/0.08/0.10 bei voller Deckung). Auffaellig ist der Blaustich: Blau liegt
+-- ueber Gruen liegt ueber Rot. Ein neutrales Grau wirkt neben den warmen
+-- Goldtoenen des Spiels schmutzig, ein leicht kuehler Ton wirkt sauber.
+-- Farbwerte abgelesen, kein Code uebernommen.
+local BG_R, BG_G, BG_B, BG_A = 0.060, 0.080, 0.100, 0.97
 local RULE_ALPHA = 0.10
 
+-- Flaechen fuer Bedienelemente, ebenfalls an EllesmereUI kalibriert.
+local SURFACE   = { 0.125, 0.125, 0.137 }  -- #202023, Flaeche unter Knöpfen
+local BTN_IDLE  = 0.18                     -- Grauwert Ruhezustand
+local BTN_HOVER = 0.25                     -- Grauwert bei Mausberuehrung
+local BTN_DOWN  = 0.11                     -- gedrueckt, dunkler als Ruhe
+local EDGE      = { 0.467, 0.471, 0.482, 0.5 }  -- #77787b bei 50 %, Kanten
+local ACCENT_TINT = 0.05                   -- Akzentflaeche bei aktivem Zustand
+
 -- Rhythmus
-local ROW_GAP     = 8
--- 8 statt 16: die Blockueberschrift bringt selbst schon 22px mit, zusammen
--- waren das rund 50px Luft zwischen zwei Bloecken. Fuer eine Liste dieser
--- Dichte zu viel.
-local BLOCK_GAP   = 8
-local LINE_H      = 20
+-- v1.1.0 leicht geöffnet. EUI gliedert über Luft, nicht über Linien. Die alten
+-- Werte waren dicht genug, dass Blöcke ineinanderliefen.
+local ROW_GAP     = 9
+local BLOCK_GAP   = 14
+local LINE_H      = 21
+
+-- Einheitliche Hoehe aller Segmente einer Wertleiste. EllesmereUI nutzt 28,
+-- das ist fuer dieses deutlich kleinere Fenster zu wuchtig.
+local SEG_H       = 22
 
 local function HexToRGB(hex)
     if #hex == 8 then hex = hex:sub(3) end
@@ -112,7 +149,8 @@ local DEFAULTS = {
     hideDone = false,        -- Erledigte ausblenden
     pinnedCollapsed = false, -- Waehrungsblock auf die Gear-Crests reduzieren
     expanded = false,        -- Fenster auf die volle Listenhoehe ziehen
-    alpha = 0.88,            -- Deckkraft der Flaeche
+    alpha = 0.95,            -- Deckkraft der Flaeche
+    accent = ACCENT_DEFAULT, -- Akzentfarbe, seit v1.1.0 frei waehlbar
     questSnapshot = false,   -- gemerkte Questliste fuer /chrissi questdiff
     questWatch = false,      -- jede abgegebene Quest ins Chatfenster melden
 }
@@ -129,6 +167,23 @@ local function ApplyDefaults()
         if ChrissisAddonCharDB[key] == nil then
             ChrissisAddonCharDB[key] = (type(value) == "table") and {} or value
         end
+    end
+
+    -- Migration v1.1.0: Wer vorher eine Deckkraft unter der neuen Untergrenze
+    -- gespeichert hatte, saesse sonst dauerhaft unter dem Minimum fest, weil
+    -- die Schleife oben nur fehlende Werte setzt und vorhandene nie prueft.
+    local a = tonumber(ChrissisAddonDB.alpha)
+    if not a or a < ALPHA_MIN then ChrissisAddonDB.alpha = ALPHA_MIN end
+    if a and a > ALPHA_MAX then ChrissisAddonDB.alpha = ALPHA_MAX end
+
+    -- Akzentfarbe uebernehmen. Muss VOR dem ersten Render passieren, sonst
+    -- traegt der Titel noch das Standard-Gold.
+    local acc = ChrissisAddonDB.accent
+    if type(acc) == "string" and (#acc == 6 or #acc == 8) and acc:match("^%x+$") then
+        GOLD = (#acc == 6) and ("ff" .. acc) or acc
+    else
+        ChrissisAddonDB.accent = ACCENT_DEFAULT
+        GOLD = ACCENT_DEFAULT
     end
 end
 
@@ -436,40 +491,111 @@ AddHairlineBorder(frame)
 -- Ohne (2) erkennt man den Schalter erst, wenn man zufaellig drueberfaehrt.
 -- Drei Zustaende, wie in Apples Komponenten-Doku: Ruhe, Hover, gedrueckt.
 -- Flache Fuellung ohne Verlauf, damit es zu EllesmereUI passt.
+-- v1.1.0: von "weisse Aufhellung auf transparentem Grund" auf eine echte,
+-- gefuellte Flaeche umgestellt. Der alte Ansatz liess den Knopf mit der
+-- Fensterdeckkraft mitschwimmen: bei niedriger Deckkraft verschwand er fast.
+-- Eine eigene Flaeche mit eigener Farbe bleibt bei jeder Einstellung sichtbar.
 local BTN = {
-    idle  = { fill = 0.07, edge = 0.18 },
-    hover = { fill = 0.15, edge = 0.38 },
-    down  = { fill = 0.24, edge = 0.50 },
+    idle  = BTN_IDLE,
+    hover = BTN_HOVER,
+    down  = BTN_DOWN,
 }
 
+-- Aktiver Zustand faerbt NICHT die ganze Flaeche. Ein kraeftig gefuellter
+-- Knopf zieht mehr Aufmerksamkeit als sein Informationsgehalt rechtfertigt.
+-- Stattdessen ein sehr leiser Farbschleier plus farbige Schrift.
+local function SetButtonActive(b, on)
+    if not b.btnAccent then return end
+    if on then
+        local r, g, bl = HexToRGB(GOLD)
+        b.btnAccent:SetColorTexture(r, g, bl, ACCENT_TINT)
+        b.btnUnderline:SetColorTexture(r, g, bl, 0.9)
+        b.btnAccent:Show(); b.btnUnderline:Show()
+    else
+        b.btnAccent:Hide(); b.btnUnderline:Hide()
+    end
+    b.btnIsActive = on and true or false
+end
+
 local function SetButtonState(b, state)
-    local s = BTN[state] or BTN.idle
-    b.btnFill:SetColorTexture(1, 1, 1, s.fill)
-    for _, t in ipairs(b.btnEdges) do t:SetColorTexture(1, 1, 1, s.edge) end
+    local v = BTN[state] or BTN.idle
+    b.btnFill:SetColorTexture(v, v, v, 0.85)
     if b.label and b.btnText then
-        b.label:SetText("|c" .. ((state == "idle") and (b.btnIdle or INK_DIM) or GOLD) .. b.btnText .. "|r")
+        local col
+        if state == "idle" then
+            col = b.btnIsActive and GOLD or (b.btnIdle or INK)
+        else
+            col = GOLD
+        end
+        b.label:SetText("|c" .. col .. b.btnText .. "|r")
     end
 end
 
+-- Kanten. Waagerechte zuerst, senkrechte daran geankert und dadurch oben und
+-- unten um einen Pixel eingerueckt. Ohne diese Einrueckung zeichnen an den vier
+-- Ecken zwei Texturen uebereinander, und die Ecke wird sichtbar heller als die
+-- Kante. Genau dieses Detail unterscheidet einen sauber gesetzten Rahmen von
+-- einem hingemalten (Technik an EllesmereUI abgeschaut, eigener Code).
+local function AddEdges(f)
+    local er, eg, eb, ea = EDGE[1], EDGE[2], EDGE[3], EDGE[4]
+
+    local top = f:CreateTexture(nil, "BORDER")
+    top:SetColorTexture(er, eg, eb, ea); top:SetHeight(1)
+    top:SetPoint("TOPLEFT"); top:SetPoint("TOPRIGHT")
+
+    local bot = f:CreateTexture(nil, "BORDER")
+    bot:SetColorTexture(er, eg, eb, ea); bot:SetHeight(1)
+    bot:SetPoint("BOTTOMLEFT"); bot:SetPoint("BOTTOMRIGHT")
+
+    local left = f:CreateTexture(nil, "BORDER")
+    left:SetColorTexture(er, eg, eb, ea); left:SetWidth(1)
+    left:SetPoint("TOPLEFT", top, "BOTTOMLEFT"); left:SetPoint("BOTTOMLEFT", bot, "TOPLEFT")
+
+    local right = f:CreateTexture(nil, "BORDER")
+    right:SetColorTexture(er, eg, eb, ea); right:SetWidth(1)
+    right:SetPoint("TOPRIGHT", top, "BOTTOMRIGHT"); right:SetPoint("BOTTOMRIGHT", bot, "TOPRIGHT")
+
+    return { top, bot, left, right }
+end
+
+-- Mittelsegment einer Wertleiste. Sieht aus wie ein Knopf, ist aber keiner,
+-- weil man auf eine Zahlenanzeige nicht klicken koennen soll.
+local function MakeSegment(parent, w, h)
+    local f = CreateFrame("Frame", nil, parent)
+    f:SetSize(w, h)
+    local fill = f:CreateTexture(nil, "BACKGROUND", nil, 1)
+    fill:SetAllPoints()
+    fill:SetColorTexture(SURFACE[1], SURFACE[2], SURFACE[3], 0.85)
+    AddEdges(f)
+    return f
+end
+
+-- Register aller gestylten Knoepfe. Beim Wechsel der Akzentfarbe muessen die
+-- aktiven Zustaende neu eingefaerbt werden, und dafuer braucht es eine Liste.
+local styledButtons = {}
+
 local function StyleButton(b, opts)
     opts = opts or {}
+    styledButtons[#styledButtons + 1] = b
 
     -- Gefuellte Flaeche PLUS Rahmen. Ein reiner Textschalter liest sich nicht
     -- als Knopf, egal wie gut der Hover ist. Das war der Kernfehler bisher.
-    local fill = b:CreateTexture(nil, "BACKGROUND")
+    local fill = b:CreateTexture(nil, "BACKGROUND", nil, 1)
     fill:SetAllPoints()
     b.btnFill = fill
 
-    b.btnEdges = {}
-    for _, p in ipairs({
-        { "TOPLEFT", "TOPRIGHT", "h" }, { "BOTTOMLEFT", "BOTTOMRIGHT", "h" },
-        { "TOPLEFT", "BOTTOMLEFT", "v" }, { "TOPRIGHT", "BOTTOMRIGHT", "v" },
-    }) do
-        local t = b:CreateTexture(nil, "BORDER")
-        t:SetPoint(p[1]); t:SetPoint(p[2])
-        if p[3] == "h" then t:SetHeight(1) else t:SetWidth(1) end
-        b.btnEdges[#b.btnEdges + 1] = t
-    end
+    -- Akzentschleier fuer den aktiven Zustand, liegt ueber der Fuellung
+    b.btnAccent = b:CreateTexture(nil, "BACKGROUND", nil, 2)
+    b.btnAccent:SetAllPoints()
+    b.btnAccent:Hide()
+
+    b.btnEdges = AddEdges(b)
+
+    -- Zweipixel-Streifen unten fuer den aktiven Zustand, statt Vollrand
+    b.btnUnderline = b:CreateTexture(nil, "OVERLAY")
+    b.btnUnderline:SetHeight(2)
+    b.btnUnderline:SetPoint("BOTTOMLEFT"); b.btnUnderline:SetPoint("BOTTOMRIGHT")
+    b.btnUnderline:Hide()
 
     b.btnText = opts.text   -- damit der Zustandswechsel die Beschriftung faerben kann
     b.btnIdle = opts.idle   -- Ruhefarbe, falls heller als der Standard sein soll
@@ -777,11 +903,15 @@ scaleText:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 12)
 -- eine GLOBALE Variable zu, die es nicht gibt, weil die echten Funktionen
 -- erst danach definiert werden. Genau daran sind die Deckkraft-Knöpfe in
 -- v0.8.0 gescheitert: Tooltip ging, Tastenkürzel ging, Klick lief ins Leere.
-local ApplyAlpha, ApplyShadows
+-- RefreshAccent steht mit in dieser Liste, weil der Titeltext bereits beim
+-- Erstellen der Frames gefaerbt wird, die gespeicherte Akzentfarbe aber erst
+-- bei ADDON_LOADED bekannt ist. Der Handler muss die Funktion also aufrufen
+-- koennen, bevor sie weiter unten definiert wird.
+local ApplyAlpha, ApplyShadows, RefreshAccent
 
 local function CreateStepButton(text, delta)
     local b = CreateFrame("Button", nil, frame)
-    b:SetSize(22, 20)
+    b:SetSize(26, SEG_H)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     b.label:SetPoint("CENTER")
     b.label:SetText("|c" .. INK_DIM .. text .. "|r")
@@ -804,14 +934,27 @@ local function CreateStepButton(text, delta)
     return b
 end
 
+-- Segmented Control statt drei freistehender Elemente. Vorher standen "-",
+-- "+" und der Wert lose nebeneinander und lasen sich als drei unabhaengige
+-- Dinge. Als zusammenhaengende Leiste ist auf einen Blick klar, dass es ein
+-- Wertebereich ist. Benachbarte Segmente ueberlappen sich um genau einen
+-- Pixel, sonst stehen an jeder Nahtstelle zwei Kanten nebeneinander und die
+-- Trennlinie waere doppelt so dick wie der Aussenrand.
 local scaleMinus = CreateStepButton("-", -SCALE_STEP)
 local scalePlus  = CreateStepButton("+",  SCALE_STEP)
-scalePlus:SetPoint("RIGHT", scaleText, "LEFT", -8, 0)
-scaleMinus:SetPoint("RIGHT", scalePlus, "LEFT", -6, 0)
+local scaleMid   = MakeSegment(frame, 48, SEG_H)
+
+scaleText:SetParent(scaleMid)
+scaleText:ClearAllPoints()
+scaleText:SetPoint("CENTER", scaleMid, "CENTER", 0, 0)
+
+scalePlus:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -PAD, 10)
+scaleMid:SetPoint("RIGHT", scalePlus, "LEFT", 1, 0)
+scaleMinus:SetPoint("RIGHT", scaleMid, "LEFT", 1, 0)
 
 local function CreateAlphaButton(text, delta)
     local b = CreateFrame("Button", nil, frame)
-    b:SetSize(22, 20)
+    b:SetSize(26, SEG_H)
     b.label = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     b.label:SetPoint("CENTER")
     b.label:SetText("|c" .. INK_DIM .. text .. "|r")
@@ -836,8 +979,11 @@ end
 
 local alphaMinus = CreateAlphaButton("-", -ALPHA_STEP)
 local alphaPlus  = CreateAlphaButton("+",  ALPHA_STEP)
-alphaMinus:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 8)
-alphaPlus:SetPoint("LEFT", alphaMinus, "RIGHT", 6, 0)
+local alphaMid   = MakeSegment(frame, 92, SEG_H)
+
+alphaMinus:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", PAD, 10)
+alphaMid:SetPoint("LEFT", alphaMinus, "RIGHT", -1, 0)
+alphaPlus:SetPoint("LEFT", alphaMid, "RIGHT", -1, 0)
 
 -- Deckkraft ------------------------------------------------------------------
 -- Je durchsichtiger das Fenster, desto mehr Spielwelt scheint durch und desto
@@ -873,7 +1019,8 @@ end
 local alphaText = frame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 -- Links Deckkraft, rechts Größe. Zwei gleichartige Regler, spiegelbildlich
 -- angeordnet, damit man sie nicht verwechselt.
-alphaText:SetPoint("LEFT", alphaPlus, "RIGHT", 10, 0)
+alphaText:SetParent(alphaMid)
+alphaText:SetPoint("CENTER", alphaMid, "CENTER", 0, 0)
 
 -- Fenster auf die volle Listenhöhe ziehen. Mittig auf der Fußzeile, damit es
 -- nicht mit der Skalierung rechts verwechselt wird.
@@ -1460,9 +1607,12 @@ function ns.Render()
         expandBtn.label:SetText("|c" .. INK_DIM .. "+|r")
     end
 
-    scaleText:SetText(string.format("|c%s%d%%|r", INK_DIM,
+    -- INK statt INK_DIM: der Wert sitzt seit v1.1.0 auf einer eigenen Flaeche
+    -- und nicht mehr auf dem Fensterhintergrund. Gedaempfter Text auf einer
+    -- aufgehellten Flaeche verliert Kontrast statt Ruhe auszustrahlen.
+    scaleText:SetText(string.format("|c%s%d%%|r", INK,
         math.floor((tonumber(ChrissisAddonDB.scale) or 1) * 100 + 0.5)))
-    alphaText:SetText(string.format("|c%s%d%% deckend|r", INK_DIM,
+    alphaText:SetText(string.format("|c%s%d%% deckend|r", INK,
         math.floor((tonumber(ChrissisAddonDB.alpha) or BG_A) * 100 + 0.5)))
 
     -- Zum Schluss, damit auch die eben erzeugten Zeilen ihren Schatten haben
@@ -1523,6 +1673,10 @@ init:SetScript("OnEvent", function(self, event, arg1)
         end
         ApplyScale(tonumber(ChrissisAddonDB.scale) or 1.0)
         ApplyAlpha(tonumber(ChrissisAddonDB.alpha) or BG_A)
+        -- Gespeicherte Akzentfarbe auf die bereits aufgebauten Frames ziehen.
+        -- ApplyDefaults hat GOLD zwar schon gesetzt, aber der Titel wurde
+        -- vorher gefaerbt und traegt sonst weiter das Standard-Gold.
+        if RefreshAccent then RefreshAccent() end
 
     elseif event == "PLAYER_ENTERING_WORLD" then
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
@@ -1532,6 +1686,95 @@ init:SetScript("OnEvent", function(self, event, arg1)
         RequestRefresh()
     end
 end)
+
+-- ============================================================================
+-- H2) Akzentfarbe
+-- ============================================================================
+-- Seit v1.1.0 frei waehlbar. Hintergrund: Das Add-on liegt seit dem 14.08.2026
+-- oeffentlich auf CurseForge, und andere Leute fahren andere UI-Setups. Ein
+-- fest verdrahtetes Gold passt zu Blizzards Questtracker, aber nicht zu einem
+-- tuerkisen oder violetten Interface.
+--
+-- Umgesetzt ueber die Variable GOLD, die deshalb keine Konstante mehr ist.
+-- Alles was zur Render-Zeit liest, bekommt den neuen Wert von selbst. Nur was
+-- EINMALIG beim Aufbau gefaerbt wurde, muss hier von Hand nachgezogen werden.
+
+function RefreshAccent()
+    -- Titel wurde beim Erstellen der Frames gefaerbt, also neu setzen
+    title:SetText("|c" .. GOLD .. "Chrissi's Addon|r")
+
+    -- Aktive Knopfzustaende tragen die Akzentfarbe in Flaeche und Streifen
+    for _, b in ipairs(styledButtons) do
+        if b.btnIsActive then SetButtonActive(b, true) end
+        if b.label and b.btnText and not b.btnIsActive then
+            b.label:SetText("|c" .. (b.btnIdle or INK) .. b.btnText .. "|r")
+        end
+    end
+
+    if frame:IsShown() then ns.Render() end
+end
+
+local function ApplyAccent(hex)
+    hex = tostring(hex or ""):gsub("^#", ""):gsub("^|c", ""):lower()
+    if #hex == 8 then hex = hex:sub(3) end
+    if #hex ~= 6 or not hex:match("^%x+$") then return false end
+
+    -- Zu dunkle Akzentfarben machen die Schrift unlesbar. Grobe Helligkeits-
+    -- pruefung nach der ueblichen Gewichtung, weil das Auge Gruen am staerksten
+    -- wahrnimmt und Blau am schwaechsten. Unter dem Schwellwert waere Text auf
+    -- der dunklen Flaeche nicht mehr zu entziffern.
+    local r = tonumber(hex:sub(1, 2), 16) / 255
+    local g = tonumber(hex:sub(3, 4), 16) / 255
+    local b = tonumber(hex:sub(5, 6), 16) / 255
+    local luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    if luma < 0.25 then
+        print("|cff33ff99Chrissi's Addon|r Diese Farbe ist zu dunkel für Text auf dunklem Grund. Bitte eine hellere wählen.")
+        return false
+    end
+
+    ChrissisAddonDB.accent = "ff" .. hex
+    GOLD = "ff" .. hex
+    RefreshAccent()
+    return true
+end
+
+-- Blizzards eigener Farbwaehler statt eines selbstgebauten. Vertraute Muster
+-- kosten weniger Nachdenken, und der Waehler kann Vorschau und Abbrechen
+-- bereits, was man sonst selbst bauen muesste.
+local function OpenAccentPicker()
+    local r, g, b = HexToRGB(GOLD)
+
+    local function toHex(rr, gg, bb)
+        return string.format("%02x%02x%02x",
+            math.floor(rr * 255 + 0.5), math.floor(gg * 255 + 0.5), math.floor(bb * 255 + 0.5))
+    end
+
+    local info = {
+        swatchFunc = function()
+            local nr, ng, nb = ColorPickerFrame:GetColorRGB()
+            ApplyAccent(toHex(nr, ng, nb))
+        end,
+        cancelFunc = function(prev)
+            -- Blizzard reicht die Ausgangsfarbe zurueck, damit Abbrechen wirkt
+            if prev then ApplyAccent(toHex(prev.r, prev.g, prev.b)) end
+        end,
+        hasOpacity = false,
+        r = r, g = g, b = b,
+    }
+
+    -- Neuere Clients haben SetupColorPickerAndShow, aeltere nur die Felder.
+    if ColorPickerFrame.SetupColorPickerAndShow then
+        ColorPickerFrame:SetupColorPickerAndShow(info)
+    else
+        ColorPickerFrame.func        = info.swatchFunc
+        ColorPickerFrame.cancelFunc  = info.cancelFunc
+        ColorPickerFrame.hasOpacity  = false
+        ColorPickerFrame.previousValues = { r = r, g = g, b = b }
+        ColorPickerFrame:SetColorRGB(r, g, b)
+        ColorPickerFrame:Hide()
+        ColorPickerFrame:Show()
+    end
+end
 
 -- ============================================================================
 -- I) Slash-Commands
@@ -1679,6 +1922,18 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("|cff33ff99Chrissi's Addon|r Quest-Mitschnitt: "
             .. (ChrissisAddonDB.questWatch and "an. Jede abgegebene Quest nennt jetzt ihre ID." or "aus."))
 
+    elseif cmd == "accent" then
+        if rest == "" then
+            OpenAccentPicker()
+        elseif rest == "reset" or rest == "standard" then
+            ApplyAccent(ACCENT_DEFAULT)
+            print("|cff33ff99Chrissi's Addon|r Akzentfarbe zurückgesetzt.")
+        elseif ApplyAccent(rest) then
+            print("|cff33ff99Chrissi's Addon|r Akzentfarbe: |c" .. GOLD .. "#" .. rest:gsub("^#", "") .. "|r")
+        else
+            print("|cff33ff99Chrissi's Addon|r Nutzung: |cffffd100/chrissi accent|r für den Farbwähler, |cffffd100/chrissi accent e8c15a|r für einen Hex-Wert, |cffffd100/chrissi accent reset|r für den Standard.")
+        end
+
     elseif cmd == "factions" then
         PrintFactions()
 
@@ -1737,7 +1992,8 @@ SlashCmdList["CHRISSISADDON"] = function(msg)
         print("|cff33ff99Chrissi's Addon|r Befehle:")
         print("  |cffffd100/chrissi|r            Fenster auf/zu")
         print("  |cffffd100/chrissi scale 120|r  Größe 50 bis 150 Prozent")
-        print("  |cffffd100/chrissi alpha 70|r   Deckkraft 35 bis 100 Prozent")
+        print("  |cffffd100/chrissi alpha 70|r   Deckkraft 60 bis 100 Prozent")
+        print("  |cffffd100/chrissi accent|r     Akzentfarbe wählen (oder: accent e8c15a / accent reset)")
         print("  |cffffd100/chrissi quellen|r    Guide-Stand und Quellen")
         print("  |cffffd100/chrissi clear|r      Alle Haken dieses Charakters löschen")
         print("  |cffffd100/chrissi zero|r       Nullbestände ein-/ausblenden")
