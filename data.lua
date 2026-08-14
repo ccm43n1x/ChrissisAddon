@@ -46,8 +46,8 @@
 local addonName, ns = ...
 
 ns.META = {
-    guideVersion = "1.3",
-    updated      = "2026-08-13",
+    guideVersion = "1.4",
+    updated      = "2026-08-14",
     season       = "Midnight Season 2 (Patch 12.1)",
     region       = "EU",
     preSeason    = "12.08. bis 18.08.2026",
@@ -163,8 +163,14 @@ ns.SECTIONS = {
               text = "Wöchentliche Spark-Quest abschließen.",
               detail = "Spark of Tides bei Eldara Dawnrunner in Silvermoon." },
 
+            -- ID am 14.08.2026 per /chrissi watch im Spiel eingesammelt. Die
+            -- Quest heißt "Purging the Vaults", nicht wie vermutet nach
+            -- Atal'Utek benannt. Deshalb war sie über die Wowhead-Suche nicht
+            -- zu finden.
             { id = "w0_atalutek_map", kind = "task", block = "P1", proof = "ok",
-              text = "Atal'Utek-Wochenquest holen für die Trovehunter's Bounty Map." },
+              check = { type = "quest", id = 95520 },
+              text = "Atal'Utek-Wochenquest holen für die Trovehunter's Bounty Map.",
+              detail = "Purging the Vaults bei Warleader Abdumati." },
 
             { id = "w0_map_t8", kind = "task", block = "P1", proof = "ok",
               text = "Karte in einem Tier-8-Delve oder höher einsetzen.",
@@ -298,9 +304,9 @@ ns.SECTIONS = {
               text = "Was bedeuten die Nemesis-Stufen ? und ?? bei Azta'rec?",
               detail = "Method und Icy Veins schreiben beide ? und ??, es ist also offenbar die echte Bezeichnung. Im Spiel gegenprüfen." },
 
-            { id = "o_toxic_tour", kind = "rule", block = "P3", proof = "single",
-              text = "Gibt A Toxic Tour ein halbes 1/6-Champion-Item?",
-              detail = "Nicht bestätigt. Die Trovehunter's Bounty Map kommt laut Method aus der Wochenquest von Warleader Abdumati, nicht aus der Kampagnenquest." },
+            { id = "o_toxic_tour", kind = "rule", block = "P3", proof = "ok",
+              text = "Die Bounty kommt aus der Wochenquest, nicht aus der Kampagne.",
+              detail = "Am 14.08.2026 im Spiel bestätigt: Purging the Vaults bei Warleader Abdumati gibt die Trovehunter's Bounty. Method hatte recht, die Kampagnenquest A Toxic Tour ist nicht die Quelle." },
 
             { id = "o_crucible_ilvl", kind = "rule", block = "P3", proof = "single",
               text = "Wie weit lässt sich der Crucible aufwerten?",
