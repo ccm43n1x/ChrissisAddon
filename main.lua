@@ -1631,6 +1631,14 @@ local function RequestRefresh()
     end)
 end
 
+-- Escape schliesst das Fenster.
+--
+-- WoW erledigt das selbst, sobald der GLOBALE Name des Frames in
+-- UISpecialFrames steht. Deshalb braucht das Fenster einen Namen, ein
+-- anonymes Frame liesse sich so nicht ansprechen. Hier heisst es
+-- ChrissisAddon_MainFrame, siehe oben bei der Erzeugung.
+tinsert(UISpecialFrames, "ChrissisAddon_MainFrame")
+
 local function ToggleWindow()
     if frame:IsShown() then frame:Hide() else frame:Show(); ns.Render() end
 end
